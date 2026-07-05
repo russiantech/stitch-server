@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Order confirmed ✅</h1>
+<p>Hi <strong>{{ name }}</strong>, your {{ order_type }} order has been received.</p>
+<div style="background:#f8faff;border-radius:8px;padding:20px;margin:20px 0">
+  <div class="info-row"><span style="color:#64748b">Reference</span><strong>{{ order_ref }}</strong></div>
+  <div class="info-row"><span style="color:#64748b">Type</span><strong>{{ order_type|title }}</strong></div>
+  <div class="info-row"><span style="color:#64748b">Total</span><strong>{{ total }}</strong></div>
+</div>
+<div style="text-align:center;margin:24px 0">
+  <a href="{{ frontend_url }}/orders" class="btn">Track your order →</a>
+</div>
+<p>We'll notify you at each stage. Thank you for choosing Stitch!</p>
+{% endblock %}

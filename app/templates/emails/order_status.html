@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Order update</h1>
+<p>Hi <strong>{{ name }}</strong>, your order <strong>{{ order_ref }}</strong> has been updated.</p>
+<div style="text-align:center;margin:28px 0">
+  <span class="badge badge-success" style="font-size:16px;padding:10px 20px">{{ status }}</span>
+</div>
+<div style="text-align:center;margin:24px 0">
+  <a href="{{ frontend_url }}/orders" class="btn">View order details →</a>
+</div>
+{% endblock %}

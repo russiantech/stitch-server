@@ -1,0 +1,135 @@
+
+# Environment files
+.env
+.env.*
+
+# Node
+node_modules/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+env/
+pip-wheel-metadata/
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Logs and databases
+*.log
+logs/
+*.sqlite3
+
+# Editor/IDE
+.vscode/
+.idea/
+*.iml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test and coverage
+.pytest_cache/
+htmlcov/
+coverage.xml
+
+# Temporary and backup files
+*~
+*.swp
+
+# Specific patterns requested
+# ignore any folder named "_" at repo root or nested
+_/
+_*/
+
+# ignore files whose name end with an underscore followed by one or more digits
+# matches examples like: *_0.html, *_1.tsx, *_3.ts, *_0.jsx and folders like name_1/
+*_[0-9]*
+
+# dotenv variants often used
+.env.local
+.env.development
+.env.production
+.env.test
+
+# Misc
+*.bak
+*.tmp
+
+# =============================
+# Backend (FastAPI) .gitignore
+# Place this content in a separate backend/.gitignore or keep here for reference
+# =============================
+# Environment / dotenv
+.env
+.env.*
+instance/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+env/
+pip-wheel-metadata/
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Caches
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Logs and databases
+*.log
+logs/
+*.sqlite3
+*.db
+*.db-journal
+
+# Migrations and Alembic
+# alembic/versions/
+# migrations/
+
+# Docker
+*.env.*.local
+docker-compose.override.yml
+**/docker-compose.override.yml
+
+# Secrets/keys
+*.pem
+*.key
+secrets/
+
+# Editor/IDE
+.vscode/
+.idea/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test/coverage
+coverage.xml
+htmlcov/
+.coverage
+
+# Temporary
+*~
+*.swp
+
+# Keep same patterns as client for folder named "_" and trailing underscores
+_/
+_*/
+*_[0-9]*

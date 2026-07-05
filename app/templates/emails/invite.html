@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>You've been invited to Stitch</h1>
+<p><strong>{{ inviter }}</strong> has invited you to join the Stitch platform as a <strong>{{ role }}</strong>.</p>
+<p>Stitch is a professional laundry &amp; fashion operations platform.</p>
+<div style="text-align:center;margin:28px 0">
+  <a href="{{ invite_url }}" class="btn">Accept Invitation →</a>
+</div>
+<p style="font-size:12px;color:#94a3b8">
+  This invitation expires in 48 hours. If you did not expect this, ignore this email.
+</p>
+{% endblock %}

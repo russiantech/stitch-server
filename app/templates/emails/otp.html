@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+{% if purpose == "verify" %}
+<h1>Verify your email</h1>
+<p>Hi <strong>{{ name }}</strong>, use the code below to verify your Stitch account:</p>
+{% elif purpose == "reset" %}
+<h1>Reset your password</h1>
+<p>Hi <strong>{{ name }}</strong>, use the code below to reset your Stitch password:</p>
+{% else %}
+<h1>Your login code</h1>
+<p>Hi <strong>{{ name }}</strong>, here is your one-time login code:</p>
+{% endif %}
+<div class="otp">{{ otp }}</div>
+<p>This code expires in <strong>10 minutes</strong>. Do not share it with anyone.</p>
+<p style="font-size:12px;color:#94a3b8">If you did not request this code, you can safely ignore this email.</p>
+{% endblock %}
+

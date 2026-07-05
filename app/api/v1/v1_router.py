@@ -1,0 +1,22 @@
+"""app/api/v1_router.py — Mounts all v1 sub-routers."""
+from fastapi import APIRouter
+
+from app.api.v1 import (
+    auth, users, orders, payments, pricing, products, 
+    inventory, notifications, analytics, customer_subscriptions, organizations
+)
+
+v1_router = APIRouter()
+
+v1_router.include_router(auth.router,                   prefix="/auth",       tags=["Auth"])
+v1_router.include_router(organizations.router,          prefix="/organizations", tags=["Organizations"])
+v1_router.include_router(users.router,                  prefix="/users",      tags=["Users"])
+v1_router.include_router(orders.router,                 prefix="/orders",     tags=["Orders"])
+v1_router.include_router(customer_subscriptions.router, prefix="/subscriptions", tags=["Subscriptions"])
+v1_router.include_router(payments.router,               prefix="/payments",   tags=["Payments"])
+v1_router.include_router(pricing.router,                prefix="/pricing",    tags=["Pricing"])
+v1_router.include_router(products.router,               prefix="/products",   tags=["Products"])
+v1_router.include_router(inventory.router,              prefix="/inventory",  tags=["Inventory"])
+v1_router.include_router(notifications.router,          prefix="/notifications", tags=["Notifications"])
+v1_router.include_router(analytics.router,              prefix="/analytics",  tags=["Analytics"])
+

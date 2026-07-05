@@ -1,0 +1,17 @@
+
+{% extends "base.html" %}
+{% block content %}
+<h1>Welcome to Stitch! ✂️</h1>
+<p>Hi <strong>{{ name }}</strong>, your account is ready.</p>
+<p>Stitch is your all-in-one laundry & fashion operations platform. You can now:</p>
+<ul style="font-size:14px;color:#475569;line-height:2">
+  <li>📦 Create and track laundry orders</li>
+  <li>👗 Request fashion services and bespoke designs</li>
+  <li>📊 Subscribe to volume plans and track unit usage</li>
+  <li>🚚 Monitor pickup and delivery in real time</li>
+</ul>
+<div style="text-align:center;margin:28px 0">
+  <a href="{{ frontend_url }}/dashboard" class="btn">Go to Dashboard →</a>
+</div>
+<p style="font-size:12px;color:#94a3b8">If you did not create this account, please ignore this email.</p>
+{% endblock %}

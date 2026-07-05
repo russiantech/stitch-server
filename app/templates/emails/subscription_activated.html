@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Subscription active 🎉</h1>
+<p>Hi <strong>{{ name }}</strong>, your <strong>{{ plan_name }}</strong> subscription is now active.</p>
+<div style="background:#ede9ff;border-radius:10px;padding:24px;text-align:center;margin:24px 0">
+  <div style="font-size:48px;font-weight:800;color:#5826ee;font-family:Montserrat,Arial,sans-serif">{{ units }}</div>
+  <div style="color:#5826ee;font-weight:600;font-size:14px">units added to your account</div>
+  {% if renews_at %}
+  <div style="color:#64748b;font-size:12px;margin-top:8px">Renews {{ renews_at }}</div>
+  {% endif %}
+</div>
+<p>Units can be used to pay for any laundry service. Split across orders or use all at once.</p>
+<div style="text-align:center;margin:24px 0">
+  <a href="{{ frontend_url or '#' }}/subscriptions" class="btn">View my subscriptions →</a>
+</div>
+{% endblock %}
