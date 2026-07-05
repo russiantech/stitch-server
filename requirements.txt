@@ -9,7 +9,8 @@ python-multipart==0.0.12
 
 # ── Database ────────────────────────────────────────────────────────────────
 SQLAlchemy==2.0.35
-psycopg2
+# psycopg2
+psycopg2-binary==2.9.12
 alembic==1.13.3
 
 # ── Validation & serialization ──────────────────────────────────────────────
