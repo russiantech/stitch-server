@@ -525,7 +525,7 @@ async def invite_user(
     temp_password = _secrets.token_urlsafe(12)
 
     invited = User(
-        names=payload.name,
+        names=payload.names,
         username=username,
         email=email,
         phone=getattr(payload, "phone", None),

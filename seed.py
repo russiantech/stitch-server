@@ -31,11 +31,11 @@ from app.db.database import create_tables, get_session_maker
 # Import every model module so create_tables() (Base.metadata.create_all)
 # actually knows about all the tables — SQLAlchemy only registers a model
 # with Base.metadata once its module has been imported somewhere.
-from app.models import (  # noqa: F401
-    organization, users, rbac, pricing, category, products,
-    inventory, tenant_billing, orders, payments, notifications,
-    platform_billing,
-)
+# from app.models import (  # noqa: F401
+#     organization, users, rbac, pricing, category, products,
+#     inventory, tenant_billing, orders, payments, notifications,
+#     platform_billing,
+# )
 from app.models.organization import Organization
 from app.models.users import User
 from app.models.rbac import Role
@@ -44,7 +44,7 @@ from app.models.category import Category
 from app.models.products import Product, ProductImage
 from app.models.inventory import InventoryItem
 from app.models.tenant_billing import ServicePlan
-from app.enums.stitch import PlanInterval
+from app.enums.stitch import PlanInterval, UserStatus
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
 log = logging.getLogger("seed")
@@ -103,14 +103,15 @@ def seed_org_and_users(db):
         if created:
             log.info("Created role: %s", name)
 
-    def ensure_user(*, username, email, names, phone, role_name, is_org_admin=False, password="Edidem12"):
+    password = "Edidem.800" # or "Edidem12
+    def ensure_user(*, username, email, names, phone, role_name, is_org_admin=False, password=password):
         user = db.query(User).filter_by(email=email).first()
         if user:
             return user, False
         user = User(
             username=username, email=email, names=names, phone=phone,
             organization_id=org.id, is_org_admin=is_org_admin,
-            is_active=True, email_verified=True,
+            status=UserStatus.ACTIVE, email_verified=True,
         )
         user.set_password(password)
         user.roles.append(roles[role_name])
@@ -119,19 +120,19 @@ def seed_org_and_users(db):
         return user, True
 
     demo_users = [
-        dict(username="edidem", email="edidem@stitch.ng", names="Chris Edidem",
+        dict(username="admin-edidem", email="admin-edidem@stitch.ng", names="Chris Edidem",
              phone="08031112222", role_name="admin", is_org_admin=True),
-        dict(username="chioma", email="chioma@stitch.ng", names="Chioma Uzoma",
+        dict(username="staff-chioma", email="staff-chioma@stitch.ng", names="Chioma Uzoma",
              phone="08032223333", role_name="staff"),
-        dict(username="tunde", email="tunde@stitch.ng", names="Tunde Bakare",
+        dict(username="staff-tunde", email="staff-tunde@stitch.ng", names="Tunde Bakare",
              phone="08033334444", role_name="staff"),
-        dict(username="segun", email="segun@stitch.ng", names="Segun Adeola",
+        dict(username="driver-segun", email="driver-segun@stitch.ng", names="Segun Adeola",
              phone="08034445555", role_name="driver"),
-        dict(username="mfon", email="mfon@gmail.com", names="MfonObong Etefia",
+        dict(username="customer-mfon", email="customer-mfon@gmail.com", names="MfonObong Etefia",
              phone="08051112222", role_name="customer"),
-        dict(username="bassey", email="bassey@gmail.com", names="Bassey Akpan",
+        dict(username="customer-bassey", email="customer-bassey@gmail.com", names="Bassey Akpan",
              phone="08052223333", role_name="customer"),
-        dict(username="kelechi", email="kelechi@gmail.com", names="Kelechi Obi",
+        dict(username="customer-kelechi", email="customer-kelechi@gmail.com", names="Kelechi Obi",
              phone="08053334444", role_name="customer"),
     ]
 
@@ -141,7 +142,7 @@ def seed_org_and_users(db):
         created_users[u["email"]] = user
         log.info("%s user: %s (%s)", "Created" if created else "Found", user.names, u["role_name"])
 
-    admin_user = created_users["edidem@stitch.ng"]
+    admin_user = created_users["admin-edidem@stitch.ng"]
     if org.owner_id is None:
         org.owner_id = admin_user.id
         log.info("Set organization owner to %s", admin_user.names)

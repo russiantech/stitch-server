@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
+from app.core.exceptions.custom_exceptions import EmailServiceError
 
 from app.core.config import get_app_config
 
@@ -94,6 +95,61 @@ def _send_resend(to: List[str], subject: str, html: str) -> bool:
 
 # ─── Public send function ──────────────────────────────────────────────────────
 
+# v1
+# def send_email(
+#     to: str | List[str],
+#     subject: str,
+#     template: str,
+#     context: Optional[dict] = None,
+#     html: Optional[str] = None,
+# ) -> bool:
+#     cfg = get_app_config().mail_config
+#     recipients = [to] if isinstance(to, str) else to
+#     body = html or _render(template, context or {})
+
+#     dispatch = {
+#         "console": _send_console,
+#         "smtp":    _send_smtp,
+#         "resend":  _send_resend,
+#     }.get(cfg.provider, _send_console)
+
+#     try:
+#         return dispatch(recipients, subject, body)
+#     except Exception as exc:
+#         logger.error("send_email error: %s", exc)
+#         return False
+
+
+# v2
+# def send_email(
+#     to: str | List[str],
+#     subject: str,
+#     template: str,
+#     context: Optional[dict] = None,
+#     html: Optional[str] = None,
+# ) -> bool:
+#     cfg = get_app_config().mail_config
+#     recipients = [to] if isinstance(to, str) else to
+#     body = html or _render(template, context or {})
+
+#     dispatch = {
+#         "console": _send_console,
+#         "smtp":    _send_smtp,
+#         "resend":  _send_resend,
+#     }.get(cfg.provider, _send_console)
+
+#     try:
+#         return dispatch(recipients, subject, body)
+#     except Exception as exc:
+#         logger.error("send_email error: %s", exc)
+#         raise EmailServiceError(str(exc)) from exc   # <-- propagate
+
+
+# v3
+from app.core.exceptions.custom_exceptions import EmailServiceError
+
+# ... existing code ...
+
 def send_email(
     to: str | List[str],
     subject: str,
@@ -112,11 +168,18 @@ def send_email(
     }.get(cfg.provider, _send_console)
 
     try:
-        return dispatch(recipients, subject, body)
+        success = dispatch(recipients, subject, body)
+        if not success:
+            raise EmailServiceError(
+                f"Email provider '{cfg.provider}' returned failure.",
+                provider=cfg.provider,
+            )
+        return True
+    except EmailServiceError:
+        raise
     except Exception as exc:
         logger.error("send_email error: %s", exc)
-        return False
-
+        raise EmailServiceError(str(exc), provider=cfg.provider) from exc
 
 # ─── Typed email helpers ───────────────────────────────────────────────────────
 
@@ -183,77 +246,3 @@ def send_order_status_update(email: str, name: str, order_ref: str, new_status: 
                  "frontend_url": get_app_config().hosting_config.frontend_url},
     )
 
-
-
-
-# v2 - more like it / Alternative
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  High-level senders  —  return bool, never raise
-# ─────────────────────────────────────────────────────────────────────────────
-
-# def send_verification_email(user_email: str, user_name: str, email_code: str) -> bool:
-#     try:
-#         cfg  = get_app_config()
-#         ctx  = _base_ctx()
-#         html = _render("verify.html", {
-#             **ctx,
-#             "user_name":     user_name,
-#             "email_code":    email_code,
-#             # "whatsapp_link": cfg.whatsapp_community_link,
-#             "fallback_body": f"Your verification code is: {email_code}",
-#         })
-#         if not html:
-#             html = (
-#                 f'<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:2rem">'
-#                 f'<h2 style="color:#5826ee">Verify your email</h2>'
-#                 f'<p>Hi {user_name}, your verification code is:</p>'
-#                 f'<div style="font-size:2.5rem;font-weight:800;letter-spacing:.3em;'
-#                 f'color:#5826ee;padding:1rem 1.5rem;background:#f0effe;'
-#                 f'border-radius:8px;text-align:center;font-family:monospace">'
-#                 f'{email_code}</div>'
-#                 f'<p style="color:#6b7280;font-size:.875rem">Expires in 10 minutes.</p></div>'
-#             )
-#         return send_email(
-#             user_email,
-#             f"Verify your email — {cfg.site_name}",
-#             html,
-#             inline_images=_images(),
-#         )
-#     except Exception as exc:
-#         logger.error("send_verification_email error: %s", exc, exc_info=True)
-#         return False
-
-
-def send_welcome_email(user_email: str, user_name: str, whatsapp_link: str = "") -> bool:
-    try:
-        cfg  = get_app_config()
-        html = _render("welcome.html", {
-            **_base_ctx(),
-            "user_name":     user_name,
-            "whatsapp_link": whatsapp_link or cfg.whatsapp_community_link,
-            "login_url":     f"{cfg.frontend_url}/auth/signin",
-            "fallback_body": f"Welcome to {cfg.site_name}!",
-        })
-        return send_email(user_email, f"Welcome to {cfg.site_name}!",
-                          html, inline_images=_images())
-    except Exception as exc:
-        logger.error("send_welcome_email error: %s", exc, exc_info=True)
-        return False
-
-
-def send_password_reset_email(user_email: str, user_name: str, reset_code: str) -> bool:
-    try:
-        cfg  = get_app_config()
-        html = _render("reset_password.html", {
-            **_base_ctx(),
-            "user_name":     user_name,
-            "reset_code":    reset_code,
-            "fallback_body": f"Your password reset code is: {reset_code}",
-        })
-        return send_email(user_email,
-                          f"Reset your password — {cfg.site_name}",
-                          html, inline_images=_images())
-    except Exception as exc:
-        logger.error("send_password_reset_email error: %s", exc, exc_info=True)
-        return False

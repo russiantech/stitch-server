@@ -102,11 +102,8 @@ from app.schemas.auth import (
 from app.services.auth_service import authenticate_user, create_user
 from app.services.email_service import (
     send_otp,
-    send_welcome,
-    # send_verification_email,
-    # send_welcome_email,
-    send_password_reset_email,
-)
+    send_welcome
+    )
 from app.services.redis_service import (
     rset, rget, rdel, rexists, rttl,
     blacklist_token, is_token_blacklisted,
@@ -220,103 +217,6 @@ def _clear_signup_staging(token: str, email: str) -> None:
 # ─────────────────────────────────────────────────────────────────────────
 # Step 1: Initiate signup
 # ─────────────────────────────────────────────────────────────────────────
-
-# backups
-# @router.post(
-#     "/signup",
-#     status_code=status.HTTP_202_ACCEPTED,
-#     summary="Step 1: Initiate signup (first org admin, or public signup if org allows it)",
-# )
-# async def signup(
-#     data: SignupSchema,
-#     request: Request,
-#     background_tasks: BackgroundTasks,
-#     db: Session = Depends(get_db),
-# ):
-#     """
-#     Stages the signup in Redis and emails a 6-digit verification code.
-#     No row is written to Postgres at this stage — see module docstring.
-
-#     RULES
-#     -----
-#     - If NO active users exist anywhere → this becomes the platform's
-#       first organization + its owning admin (no auth required).
-#     - Otherwise, public signup is only permitted if exactly one
-#       Organization exists AND that org has `allow_public_signup = True`.
-#     - New public signups are created INACTIVE pending admin approval —
-#       enforced again at verify-time, not just here.
-#     """
-#     email = data.email.lower().strip()
-#     username = data.username.lower().strip()
-
-#     # EDGE: don't leak whether *Postgres* already has this account vs. it
-#     # being mid-flight in Redis — both cases should read as "in use."
-#     _check_email_uniqueness(db, email)
-#     _check_username_uniqueness(db, username)
-#     _check_phone_uniqueness(db, data.phone)
-
-#     user_count = db.query(User).filter(User.deleted == False).count()  # noqa: E712
-    
-#     is_first_account = user_count == 0
-
-#     if not is_first_account:
-#         org = db.query(Organization).first()
-#         if not org or not getattr(org, "allow_public_signup", False):
-#             raise ForbiddenError("Account creation is restricted. Contact your administrator.")
-#         is_public_signup = True
-#         target_org_id = str(org.id)
-#     else:
-#         is_public_signup = False
-#         target_org_id = None
-
-#     # EDGE: a duplicate signup attempt for an email that's already staged
-#     # (but not yet verified) should refresh-and-resend rather than create
-#     # a second, divergent staged payload under a different token.
-#     existing_token = rget(f"{SIGNUP_EMAIL_INDEX_PREFIX}{email}")
-#     if existing_token and rexists(f"{SIGNUP_PENDING_PREFIX}{existing_token}"):
-#         return await _reissue_signup_code(background_tasks, str(existing_token))
-
-#     email_code = generate_code(6)
-#     signup_token = secrets.token_urlsafe(32)
-
-#     signup_data = {
-#         "username": username,
-#         "email": email,
-#         "names": data.names or username,
-#         "phone": data.phone or "",
-#         "password_hash": hash_password(data.password),
-#         "email_code": email_code,
-#         "attempts": 0,
-#         "is_org_admin": not is_public_signup,
-#         "is_public_signup": is_public_signup,
-#         "organization_id": target_org_id,
-#         "org_name": data.org_name or f"{username}'s Organization",
-#         "created_at": datetime.now(timezone.utc).isoformat(),
-#         "ip": get_client_ip(request),
-#     }
-
-#     if not rset(f"{SIGNUP_PENDING_PREFIX}{signup_token}", signup_data, ttl=SIGNUP_TOKEN_TTL_SECONDS):
-#         raise ServiceUnavailableError("Could not initiate signup. Please try again.")
-#     rset(f"{SIGNUP_EMAIL_INDEX_PREFIX}{email}", signup_token, ttl=SIGNUP_TOKEN_TTL_SECONDS)
-
-#     # if not send_verification_email(email, signup_data["names"], email_code):
-#     if not send_otp(email, signup_data["names"], email_code):
-#         # EDGE: never leave an orphaned staged signup if the email never
-#         # went out — otherwise the user is locked out of retrying with
-#         # the same email until TTL expiry.
-#         rdel(f"{SIGNUP_PENDING_PREFIX}{signup_token}", f"{SIGNUP_EMAIL_INDEX_PREFIX}{email}")
-#         raise ServiceUnavailableError(
-#             "Failed to send verification email. Please check the address and try again."
-#         )
-
-#     logger.info("Signup initiated for %s (first_account=%s)", email, is_first_account)
-
-#     return api_response(
-#         success=True,
-#         message="Verification code sent! Check your email.",
-#         data={"token": signup_token, "email": email, "expires_in_seconds": SIGNUP_TOKEN_TTL_SECONDS},
-#         status_code=202,
-#     )
 
 
 @router.post(
@@ -433,7 +333,7 @@ async def signup(
         # the same email until TTL expiry.
         rdel(f"{SIGNUP_PENDING_PREFIX}{signup_token}", f"{SIGNUP_EMAIL_INDEX_PREFIX}{email}")
         raise ServiceUnavailableError(
-            "Failed to send verification email. Please check the address and try again."
+            f"Failed to send verification email. Please check the address [{email}] and try again."
         )
 
     logger.info("Signup initiated for %s (first_account=%s)", email, is_first_account)
@@ -574,17 +474,35 @@ async def signup_verify(
             status_code=201,
         )
 
+    # # ── First account on this deployment: create Organization + admin ──
+    # org = Organization(
+    #     name=signup_data.get("org_name") or "Default Organization",
+    #     slug=username,
+    #     plan="free",
+    #     allow_public_signup=False,
+    #     max_users=DEFAULT_FREE_TIER_MAX_USERS,
+    #     created_at=datetime.now(timezone.utc),
+    # )
+    # db.add(org)
+    # db.flush()  # get org.id without committing yet — keeps org+user atomic
+    
+    # v2
+    from app.utils.helpers import make_slug
+
     # ── First account on this deployment: create Organization + admin ──
+    org_name = signup_data.get("org_name") or "Default Organization"
+    org_slug = make_slug(org_name, suffix=True)
+
     org = Organization(
-        name=signup_data.get("org_name") or "Default Organization",
-        slug=username,
+        name=org_name,
+        slug=org_slug,
         plan="free",
         allow_public_signup=False,
         max_users=DEFAULT_FREE_TIER_MAX_USERS,
         created_at=datetime.now(timezone.utc),
     )
     db.add(org)
-    db.flush()  # get org.id without committing yet — keeps org+user atomic
+    db.flush()
 
     user = create_user(
         db=db,
@@ -599,7 +517,8 @@ async def signup_verify(
     )
     # First account must be able to sign in immediately — there's no
     # other admin yet to approve it.
-    user.is_active = True
+    # user.is_active = True
+    user.status = UserStatus.ACTIVE
     user.ip = signup_data.get("ip")
     db.flush()
 
@@ -877,16 +796,45 @@ async def forgot_password(
     # /reset-password later just resolves to "session expired."
     if user:
         reset_key = f"{PWD_RESET_PREFIX}{reset_token}"
+        
+        # in forgot_password, add name to the staged reset_key data:
         if not rset(
             reset_key,
-            {"user_id": str(user.id), "email": user.email, "reset_code": reset_code, "attempts": 0},
-            ttl=PASSWORD_RESET_TTL_SECONDS,
-        ):
+            {
+                "user_id": str(user.id), 
+                "email": user.email, 
+                "name": user.names or user.username,
+                "reset_code": reset_code, "attempts": 0},
+                ttl=PASSWORD_RESET_TTL_SECONDS,
+            ):
             raise ServiceUnavailableError("Could not initiate password reset. Please try again.")
-        if not send_password_reset_email(user.email, user.names or user.username, reset_code):
+
+        if not send_otp(user.email, user.names or user.username, reset_code, purpose="reset"):
             rdel(reset_key)
             raise ServiceUnavailableError("Failed to send reset email. Please try again.")
+
         logger.info("Password reset initiated for %s", user.email)
+
+    # # v2
+    # if user:
+    #     reset_key = f"{PWD_RESET_PREFIX}{reset_token}"
+    #     if not rset(
+    #         reset_key,
+    #         {
+    #             "user_id": str(user.id),
+    #             "email": user.email,
+    #             "name": user.names or user.username,
+    #             "reset_code": reset_code,
+    #             "attempts": 0,
+    #         },
+    #         ttl=PASSWORD_RESET_TTL_SECONDS,
+    #     ):
+    #         raise ServiceUnavailableError("Could not stage password reset. Please try again.")
+
+    #     # This now raises EmailServiceError on any failure — no bool check needed
+    #     send_otp(user.email, user.names or user.username, reset_code, purpose="reset")
+
+    #     logger.info("Password reset initiated for %s", user.email)
 
     return api_response(
         True,
@@ -1014,10 +962,11 @@ async def resend_reset_code(
     rset(reset_key, reset_data, ttl=PASSWORD_RESET_TTL_SECONDS)
 
     background_tasks.add_task(
-        send_password_reset_email,
+        send_otp,
         reset_data["email"],
         reset_data.get("name") or reset_data["email"],
         new_code,
+        "reset"
     )
     return api_response(True, "New reset code sent.")
 

@@ -223,6 +223,7 @@ def initiate_subscription(
         raise NotFoundError("Plan", plan_id)
 
     email = payload.email or user.email
+    
     ref   = generate_reference("ST-SUB")
 
     existing_sub = db.query(CustomerSubscription).options(joinedload(CustomerSubscription.plan)).filter(

@@ -9,20 +9,6 @@ from app.models.rbac import Role
 logger = logging.getLogger(__name__)
 
 
-# def authenticate_user(db: Session, email: str, password: str):
-#     """Authenticate by email or username + password."""
-#     user = db.query(User).filter(
-#         or_(User.email == email, User.username == email),
-#         User.deleted == False,
-#     ).first()
-#     if not user:
-#         return None
-#     if not user.check_password(password):
-#         return None
-#     return user
-
-# from sqlalchemy import or_
-
 def authenticate_user(db: Session, identifier: str, password: str):
     """Authenticate by email, username, or phone + password."""
     # identifier = identifier.strip().lower()

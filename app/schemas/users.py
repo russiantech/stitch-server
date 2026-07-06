@@ -60,7 +60,7 @@ class UserProfile(UserPublic):
 
 
 class UserUpdate(BaseModel):
-    names: Optional[str]     = Field(None, min_length=2, max_length=150)
+    names: Optional[str]     = Field(None, min_length=2, max_length=100)
     username: Optional[str] = Field(None, min_length=3, max_length=60)
     phone: Optional[str]    = Field(None, max_length=30)
     bio: Optional[str]      = None
@@ -78,8 +78,8 @@ class UserAdminUpdate(UserUpdate):
 
 
 class InviteUserRequest(BaseModel):
-    names: str           = Field(..., min_length=2, max_length=150)
+    names: str              = Field(..., min_length=2, max_length=100)
     email: EmailStr
-    phone: Optional[str] = None
-    roles: List[UserRole] = [UserRole.CUSTOMER]
+    phone: Optional[str]    = None
+    roles: List[UserRole]   = [UserRole.CUSTOMER]
 

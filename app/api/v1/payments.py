@@ -58,7 +58,7 @@ def initialize_payment(
         payment = Payment(
             user_id=str(user.id),
             order_id=str(payload.order_id) if payload.order_id else None,
-            subscription_id=str(payload.subscription_id) if payload.subscription_id else None,
+            customer_subscription_id=str(payload.subscription_id) if payload.subscription_id else None,
             reference=ref,
             provider=PaymentProvider.PAYSTACK,
             purpose=payload.purpose,
