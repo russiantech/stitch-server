@@ -147,7 +147,9 @@ async def create_product(
             cat = db.get(Category, cid)
             if cat: product.categories.append(cat)
 
-    await _save_images(product.id, images, db)
+    # await _save_images(product.id, images, db)
+    await SaveToSupabaseStorage(product.id, images, db)
+    
     return api_response(
         success=True,
         message="Product created.",
@@ -191,7 +193,7 @@ async def update_product(
             img.soft_delete()
 
     if images:
-        await _save_images(product.id, images, db)
+        await SaveToSupabaseStorage(product.id, images, db)
 
     return api_response(
         success=True,
@@ -236,24 +238,40 @@ def _product_out(p: Product) -> ProductOut:
     )
 
 
-async def _save_images(product_id: str, files: List[UploadFile], db: Session):
-    cfg = get_app_config()
-    base_path = Path(cfg.hosting_config.content_delivery.filesystem_base_path) / "products"
-    base_path.mkdir(parents=True, exist_ok=True)
+# async def SaveToSupabaseStorage(product_id: str, files: List[UploadFile], db: Session):
+#     existing_count = db.query(ProductImage).filter(ProductImage.product_id == product_id).count()
+
+#     for i, file in enumerate(files):
+#         if not file.filename: continue
+#         ext      = Path(file.filename).suffix.lower()
+#         fname    = f"{uuid.uuid4().hex}{ext}"
+#         filepath = base_path / fname
+#         contents = await file.read()
+#         filepath.write_bytes(contents)
+#         media_type = "video" if ext in (".mp4", ".webm", ".mov") else "image"
+#         db.add(ProductImage(
+#             product_id=product_id,
+#             url=f"/static/products/{fname}",
+#             media_type=media_type,
+#             display_order=existing_count + i,
+#         ))
+
+# v2
+from app.services.storage_service import upload_file
+
+async def SaveToSupabaseStorage(product_id: str, files: List[UploadFile], db: Session):
     existing_count = db.query(ProductImage).filter(ProductImage.product_id == product_id).count()
 
     for i, file in enumerate(files):
-        if not file.filename: continue
-        ext      = Path(file.filename).suffix.lower()
-        fname    = f"{uuid.uuid4().hex}{ext}"
-        filepath = base_path / fname
+        if not file.filename:
+            continue
         contents = await file.read()
-        filepath.write_bytes(contents)
+        url = upload_file(contents, file.filename, folder="products")
+        ext = Path(file.filename).suffix.lower()
         media_type = "video" if ext in (".mp4", ".webm", ".mov") else "image"
         db.add(ProductImage(
             product_id=product_id,
-            url=f"/static/products/{fname}",
+            url=url,
             media_type=media_type,
             display_order=existing_count + i,
         ))
-

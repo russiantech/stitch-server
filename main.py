@@ -10,13 +10,13 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.staticfiles import StaticFiles
 
 from app.core.config import get_app_config
 from app.core.exceptions.handlers import setup_exception_handlers
 from app.api.root_router import root_router
 from app.api.v1.v1_router import v1_router
 from app.db.database import close_db, create_tables
+from server.app.services.storage_service import ensure_bucket_exists
 
 logging.basicConfig(
     level=logging.INFO,
@@ -46,6 +46,16 @@ async def lifespan(app: FastAPI):
         if not cfg.general_config.development_mode:
             raise
 
+    """ 
+        My recommendation: use the one-off script approach for actual bucket creation (run once per environment when you provision), and skip calling ensure_bucket_exists() from the request-serving lifespan — keeps cold starts fast and avoids repeatedly hitting Supabase's API on every deploy/invocation for something that only needs to happen once.
+    """
+    # try:
+    #     ensure_bucket_exists()
+    # except Exception as exc:
+    #     logger.error("Supabase storage bucket check failed: %s", exc)
+    #     if not cfg.general_config.development_mode:
+    #         raise
+        
     yield
 
     logger.info("Stitch shutting down...")
@@ -92,11 +102,12 @@ def create_app() -> FastAPI:
         return response
 
     # ── Static files ───────────────────────────────────────────────────────────
-    import os
-    os.makedirs("uploads/products", exist_ok=True)
-    os.makedirs("uploads/misc", exist_ok=True)
-    app.mount("/static/products", StaticFiles(directory="uploads/products"), name="products")
-    app.mount("/static",          StaticFiles(directory="uploads"),          name="static")
+    # import os
+    # from fastapi.staticfiles import StaticFiles
+    # os.makedirs("uploads/products", exist_ok=True)
+    # os.makedirs("uploads/misc", exist_ok=True)
+    # app.mount("/static/products", StaticFiles(directory="uploads/products"), name="products")
+    # app.mount("/static",          StaticFiles(directory="uploads"),          name="static")
 
     # ── Exception handlers ─────────────────────────────────────────────────────
     setup_exception_handlers(app)

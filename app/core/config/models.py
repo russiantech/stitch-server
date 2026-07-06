@@ -33,14 +33,60 @@ class S3Config(BaseModel):
     use_ssl: bool = True
 
 
-class ContentDeliveryConfig(BaseModel):
-    type: Literal["filesystem", "s3api", "cloudinary"] = "filesystem"
-    filesystem_base_path: str = "./uploads"
+# class ContentDeliveryConfig(BaseModel):
+#     type: Literal["filesystem", "s3api", "cloudinary"] = "filesystem"
+#     filesystem_base_path: str = "./uploads"
+#     max_file_size_mb: int = 50
+#     allowed_image_types: List[str] = ["image/jpeg", "image/png", "image/webp", "image/gif"]
+#     allowed_video_types: List[str] = ["video/mp4", "video/webm"]
+#     # s3api: S3Config = S3Config()
+
+# STORAGE
+
+class SupabaseStorageConfig(BaseModel):
+    url: Optional[str] = None
+    service_role_key: Optional[str] = None
+    bucket_name: str = "products"
+    public: bool = True
+
+
+class CloudinaryConfig(BaseModel):
+    cloud_name: Optional[str] = None
+    api_key: Optional[str] = None
+    api_secret: Optional[str] = None
+    folder: str = "products"
+
+
+# class StorageConfig(BaseModel):
+#     """Top-level file storage config — provider-agnostic.
+#     Add new providers here (s3, cloudinary, supabase, ...) without
+#     touching ContentDeliveryConfig, which stays focused on upload
+#     limits/validation, not *where* files live."""
+#     provider: Literal["filesystem", "s3", "supabase", "cloudinary"] = "filesystem"
+#     filesystem_base_path: str = "./uploads"
+#     s3: S3Config = S3Config()
+#     supabase: SupabaseStorageConfig = SupabaseStorageConfig()
+#     cloudinary: CloudinaryConfig = CloudinaryConfig()
+
+# v2
+class StorageConfig(BaseModel):
+    """Single source of truth for file storage: where files live,
+    how they're validated, and provider-specific credentials.
+    Add new providers as sibling sub-models (s3, cloudinary, supabase, ...)."""
+    provider: Literal["filesystem", "s3", "supabase", "cloudinary"] = "supabase"
+
+    # Validation — applies regardless of provider
     max_file_size_mb: int = 50
     allowed_image_types: List[str] = ["image/jpeg", "image/png", "image/webp", "image/gif"]
     allowed_video_types: List[str] = ["video/mp4", "video/webm"]
-    s3api: S3Config = S3Config()
 
+    # Filesystem provider
+    filesystem_base_path: str = "./uploads"
+
+    # Provider-specific credentials
+    s3: S3Config = S3Config()
+    supabase: SupabaseStorageConfig = SupabaseStorageConfig()
+    cloudinary: CloudinaryConfig = CloudinaryConfig()
 
 class HostingConfig(BaseModel):
     domain: str = "localhost"
@@ -50,8 +96,9 @@ class HostingConfig(BaseModel):
     frontend_url: str = "http://localhost:5173"
     api_url_override: Optional[str] = Field(default=None, alias="api_url")
     cookie_config: CookieConfig = CookieConfig()
-    content_delivery: ContentDeliveryConfig = ContentDeliveryConfig()
-
+    # content_delivery: ContentDeliveryConfig = ContentDeliveryConfig()
+    storage: StorageConfig = StorageConfig()
+    
     @computed_field
     @property
     def api_url(self) -> str:
@@ -140,6 +187,7 @@ class MonitoringConfig(BaseModel):
 class AppConfig(BaseModel):
     general_config: GeneralConfig = GeneralConfig()
     hosting_config: HostingConfig = HostingConfig()
+    storage_config: StorageConfig = StorageConfig()
     database_config: DatabaseConfig = DatabaseConfig()
     redis_config: RedisConfig = RedisConfig()
     security_config: SecurityConfig = Field(
