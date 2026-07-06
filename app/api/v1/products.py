@@ -1,5 +1,4 @@
 """app/api/v1/products.py — Fashion catalog: products and categories."""
-import uuid
 from pathlib import Path
 from typing import List, Optional
 
@@ -9,7 +8,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.api.deps.auth import get_current_user, require_admin
 from app.core.config import get_app_config
-from app.core.exceptions.custom_exceptions import NotFoundError
+from app.core.exceptions.custom_exceptions import BadRequestError, NotFoundError
 from app.db.database import get_db
 from app.models.products import Product, ProductImage
 from app.models.category import Category
@@ -18,7 +17,7 @@ from app.schemas.products import (
     CategoryCreate, CategoryOut, CategoryUpdate,
     ProductOut, ProductImageOut,
 )
-
+from app.services.storage_service import upload_file, delete_file
 from app.utils.helpers import make_slug
 from app.utils.responses import api_response
 
@@ -147,9 +146,8 @@ async def create_product(
             cat = db.get(Category, cid)
             if cat: product.categories.append(cat)
 
-    # await _save_images(product.id, images, db)
-    await SaveToSupabaseStorage(product.id, images, db)
-    
+    await _save_images(product.id, images, db)
+
     return api_response(
         success=True,
         message="Product created.",
@@ -190,10 +188,11 @@ async def update_product(
 
     if image_action == "replace":
         for img in product.images:
+            delete_file(img.url)
             img.soft_delete()
 
     if images:
-        await SaveToSupabaseStorage(product.id, images, db)
+        await _save_images(product.id, images, db)
 
     return api_response(
         success=True,
@@ -221,6 +220,7 @@ def delete_images(
     for img_id in image_ids:
         img = db.get(ProductImage, img_id)
         if img and img.product_id == product_id:
+            delete_file(img.url)
             img.soft_delete()
     return api_response(success=True, message="Images removed.")
 
@@ -238,34 +238,25 @@ def _product_out(p: Product) -> ProductOut:
     )
 
 
-# async def SaveToSupabaseStorage(product_id: str, files: List[UploadFile], db: Session):
-#     existing_count = db.query(ProductImage).filter(ProductImage.product_id == product_id).count()
+def _validate_upload(file: UploadFile, contents: bytes) -> None:
+    cfg = get_app_config().storage_config
+    max_bytes = cfg.max_file_size_mb * 1024 * 1024
+    if len(contents) > max_bytes:
+        raise BadRequestError(f"'{file.filename}' exceeds the {cfg.max_file_size_mb}MB upload limit.")
+    allowed = cfg.allowed_image_types + cfg.allowed_video_types
+    if file.content_type not in allowed:
+        raise BadRequestError(f"Unsupported file type: {file.content_type}")
 
-#     for i, file in enumerate(files):
-#         if not file.filename: continue
-#         ext      = Path(file.filename).suffix.lower()
-#         fname    = f"{uuid.uuid4().hex}{ext}"
-#         filepath = base_path / fname
-#         contents = await file.read()
-#         filepath.write_bytes(contents)
-#         media_type = "video" if ext in (".mp4", ".webm", ".mov") else "image"
-#         db.add(ProductImage(
-#             product_id=product_id,
-#             url=f"/static/products/{fname}",
-#             media_type=media_type,
-#             display_order=existing_count + i,
-#         ))
 
-# v2
-from app.services.storage_service import upload_file
-
-async def SaveToSupabaseStorage(product_id: str, files: List[UploadFile], db: Session):
+async def _save_images(product_id: str, files: List[UploadFile], db: Session):
     existing_count = db.query(ProductImage).filter(ProductImage.product_id == product_id).count()
 
     for i, file in enumerate(files):
         if not file.filename:
             continue
         contents = await file.read()
+        _validate_upload(file, contents)
+
         url = upload_file(contents, file.filename, folder="products")
         ext = Path(file.filename).suffix.lower()
         media_type = "video" if ext in (".mp4", ".webm", ".mov") else "image"
@@ -275,3 +266,4 @@ async def SaveToSupabaseStorage(product_id: str, files: List[UploadFile], db: Se
             media_type=media_type,
             display_order=existing_count + i,
         ))
+

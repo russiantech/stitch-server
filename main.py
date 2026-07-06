@@ -16,7 +16,7 @@ from app.core.exceptions.handlers import setup_exception_handlers
 from app.api.root_router import root_router
 from app.api.v1.v1_router import v1_router
 from app.db.database import close_db, create_tables
-from server.app.services.storage_service import ensure_bucket_exists
+# from app.services.storage_service import ensure_bucket_exists
 
 logging.basicConfig(
     level=logging.INFO,
