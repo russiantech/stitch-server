@@ -13,6 +13,7 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
+from app.services.payments import get_provider
 from sqlalchemy import desc
 from sqlalchemy.orm import Session, joinedload
 
@@ -25,11 +26,12 @@ from app.enums.stitch import (
     PaymentPurpose, PaymentStatus, 
     PaymentProvider, UsagePaymentSource
 )
+
 from app.enums.billing import SubscriptionStatus
 from app.models.users import User
 # from app.models.subscriptions import Plan, Subscription, UsageLog
 from app.models.tenant_billing import ServicePlan, CustomerSubscription, CustomerUsageLog
-from app.models.payments import Payment
+from app.models.payments.base import Payment
 from app.schemas.subscriptions import (
     PlanCreate, PlanOut, PlanUpdate,
     SubscriptionInitiateRequest, SubscriptionOut,
@@ -39,8 +41,13 @@ from app.services.email_service import send_subscription_activated
 from app.services.notification_service import (
     notify_subscription_activated, notify_subscription_topped_up, notify_low_units,
 )
-from app.services.paystack_service import PaystackError, get_paystack
-from app.utils.helpers import generate_reference, next_renewal_date
+from app.services.payments.paystack import PaystackError, get_paystack
+
+from app.core.config.loader import get_app_config
+from app.services.payments.base import PaymentProviderError
+from app.services.payments.provider_resolver import _get_provider_for_org
+
+from app.utils.helpers import from_kobo, generate_reference, next_renewal_date
 from app.utils.responses import api_response
 
 logger = logging.getLogger(__name__)
@@ -204,6 +211,92 @@ def all_subscriptions(
     )
 
 
+# @router.post("/payment/{plan_id}/paystack")
+# def initiate_subscription(
+#     plan_id: str,
+#     payload: SubscriptionInitiateRequest,
+#     background: BackgroundTasks,
+#     user: User = Depends(get_current_user),
+#     db: Session = Depends(get_db),
+# ):
+#     """
+#     Initiate subscription payment via Paystack.
+#     - If plan_code exists → Paystack recurring plan (auto-renews)
+#     - If user already has this plan → top-up (same endpoint)
+#     Returns: { authorization_url, reference } for the frontend to redirect/open popup.
+#     """
+#     plan = db.get(ServicePlan, plan_id)
+#     if not plan or not plan.is_active:
+#         raise NotFoundError("Plan", plan_id)
+
+#     email = payload.email or user.email
+    
+#     ref   = generate_reference("ST-SUB")
+
+#     existing_sub = db.query(CustomerSubscription).options(joinedload(CustomerSubscription.plan)).filter(
+#         CustomerSubscription.user_id == user.id,
+#         CustomerSubscription.plan_id == plan_id,
+#         CustomerSubscription.status.in_([SubscriptionStatus.ACTIVE, SubscriptionStatus.PAUSED]),
+#     ).first()
+#     is_topup = existing_sub is not None
+
+#     # Create payment record first
+#     payment = Payment(
+#         user_id=user.id,
+#         customer_subscription_id=existing_sub.id if existing_sub else None,
+#         reference=ref,
+#         provider=PaymentProvider.PAYSTACK,
+#         purpose=PaymentPurpose.TOP_UP if is_topup else PaymentPurpose.SUBSCRIPTION,
+#         status=PaymentStatus.PENDING,
+#         amount=plan.amount,
+#         metadata_json={
+#             "plan_id": str(plan.id), 
+#             "plan_name": plan.name,
+#             "is_topup": is_topup, 
+#             "user_id": str(user.id),
+#         },
+#     )
+#     db.add(payment); db.flush()
+
+#     # Call Paystack — use plan_code for recurring if available
+#     try:
+#         ps_data = get_paystack().initialize_transaction(
+#             email=email,
+#             amount=plan.amount,
+#             reference=ref,
+#             callback_url=payload.callback_url or __import__(
+#                 "app.core.config", fromlist=["get_app_config"]
+#             ).get_app_config().payments_config.paystack.callback_url,
+#             plan_code=plan.paystack_plan_code,   # recurring if set
+#             metadata={
+#                 "plan_id": str(plan.id), "plan_name": plan.name,
+#                 "is_topup": is_topup, "user_id": str(user.id),
+#                 "payment_id": str(payment.id),
+#             },
+#         )
+#         payment.paystack_id  = ps_data.get("access_code")
+#         payment.access_code  = ps_data.get("access_code")
+#         payment.authorization_url = ps_data.get("authorization_url")
+#         data={
+#                 "reference": ref,
+#                 "authorization_url": ps_data.get("authorization_url"),
+#                 "access_code": ps_data.get("access_code"),
+#                 "is_topup": is_topup,
+#                 "plan": PlanOut.model_validate(plan),
+#             }
+#         logger.info(f"Initiated subscription payment: {data}")
+        
+#         return api_response(
+#             success=True,
+#             message="Payment initiated.",
+#             data=data
+#         )
+#     except PaystackError as exc:
+#         payment.status = PaymentStatus.FAILED
+#         raise CustomAPIException(f"Payment initiation failed: {exc.message}", 502, "PAYSTACK_ERROR")
+
+# v2
+
 @router.post("/payment/{plan_id}/paystack")
 def initiate_subscription(
     plan_id: str,
@@ -213,18 +306,19 @@ def initiate_subscription(
     db: Session = Depends(get_db),
 ):
     """
-    Initiate subscription payment via Paystack.
-    - If plan_code exists → Paystack recurring plan (auto-renews)
+    Initiate subscription payment via the org's configured payment
+    provider (default OPay, falls back to Paystack if unconfigured).
+    - If plan_code exists AND provider is Paystack → recurring plan (auto-renews)
     - If user already has this plan → top-up (same endpoint)
-    Returns: { authorization_url, reference } for the frontend to redirect/open popup.
+    Returns: { authorization_url, reference, access_code } for the
+    frontend to redirect/resume-inline.
     """
     plan = db.get(ServicePlan, plan_id)
     if not plan or not plan.is_active:
         raise NotFoundError("Plan", plan_id)
 
     email = payload.email or user.email
-    
-    ref   = generate_reference("ST-SUB")
+    ref = generate_reference("ST-SUB")
 
     existing_sub = db.query(CustomerSubscription).options(joinedload(CustomerSubscription.plan)).filter(
         CustomerSubscription.user_id == user.id,
@@ -233,60 +327,66 @@ def initiate_subscription(
     ).first()
     is_topup = existing_sub is not None
 
-    # Create payment record first
+    resolved = _get_provider_for_org(db, user.organization_id)
+
     payment = Payment(
         user_id=user.id,
         customer_subscription_id=existing_sub.id if existing_sub else None,
         reference=ref,
-        provider=PaymentProvider.PAYSTACK,
+        provider=resolved.provider_name,
         purpose=PaymentPurpose.TOP_UP if is_topup else PaymentPurpose.SUBSCRIPTION,
         status=PaymentStatus.PENDING,
         amount=plan.amount,
         metadata_json={
-            "plan_id": str(plan.id), 
+            "plan_id": str(plan.id),
             "plan_name": plan.name,
-            "is_topup": is_topup, 
+            "is_topup": is_topup,
             "user_id": str(user.id),
+            "provider": resolved.provider_name,
         },
     )
     db.add(payment); db.flush()
 
-    # Call Paystack — use plan_code for recurring if available
+    callback_url = payload.callback_url or get_app_config().payments_config.paystack.callback_url
+
     try:
-        ps_data = get_paystack().initialize_transaction(
+        init_kwargs = dict(
             email=email,
             amount=plan.amount,
             reference=ref,
-            callback_url=payload.callback_url or __import__(
-                "app.core.config", fromlist=["get_app_config"]
-            ).get_app_config().payments_config.paystack.callback_url,
-            plan_code=plan.paystack_plan_code,   # recurring if set
+            callback_url=callback_url,
             metadata={
                 "plan_id": str(plan.id), "plan_name": plan.name,
                 "is_topup": is_topup, "user_id": str(user.id),
                 "payment_id": str(payment.id),
             },
+            subaccount_code=resolved.subaccount_code,
         )
-        payment.paystack_id  = ps_data.get("access_code")
-        payment.access_code  = ps_data.get("access_code")
+        # Recurring plan codes are a Paystack-specific mechanism — only
+        # pass plan_code when Paystack is actually the resolved provider.
+        if resolved.provider_name == "paystack" and plan.paystack_plan_code:
+            init_kwargs["plan_code"] = plan.paystack_plan_code
+
+        ps_data = resolved.client.initialize_transaction(**init_kwargs)
+
+        payment.paystack_id = ps_data.get("access_code")
+        payment.access_code = ps_data.get("access_code")
         payment.authorization_url = ps_data.get("authorization_url")
-        data={
-                "reference": ref,
-                "authorization_url": ps_data.get("authorization_url"),
-                "access_code": ps_data.get("access_code"),
-                "is_topup": is_topup,
-                "plan": PlanOut.model_validate(plan),
-            }
+
+        data = {
+            "reference": ref,
+            "authorization_url": ps_data.get("authorization_url"),
+            "access_code": ps_data.get("access_code"),
+            "is_topup": is_topup,
+            "provider": resolved.provider_name,
+            "plan": PlanOut.model_validate(plan),
+        }
         logger.info(f"Initiated subscription payment: {data}")
-        
-        return api_response(
-            success=True,
-            message="Payment initiated.",
-            data=data
-        )
-    except PaystackError as exc:
+
+        return api_response(success=True, message="Payment initiated.", data=data)
+    except PaymentProviderError as exc:
         payment.status = PaymentStatus.FAILED
-        raise CustomAPIException(f"Payment initiation failed: {exc.message}", 502, "PAYSTACK_ERROR")
+        raise CustomAPIException(f"Payment initiation failed: {exc.message}", 502, "PAYMENT_PROVIDER_ERROR")
 
 
 @router.get("/payment/callback/paystack")
@@ -312,33 +412,117 @@ def verify_inline_payment(
     return _verify_and_activate(reference, user, background, db)
 
 
+# def _verify_and_activate(reference: str, user: User, background: BackgroundTasks, db: Session):
+#     """Shared logic: verify Paystack transaction → activate/top-up subscription."""
+#     payment = db.query(Payment).filter(Payment.reference == reference).first()
+#     if not payment:
+#         raise NotFoundError("Payment", reference)
+
+#     if payment.status == PaymentStatus.SUCCESS:
+#         return api_response(
+#             success=True,
+#             message="Subscription already active.",
+#         )
+
+#     try:
+#         tx = get_paystack().verify_transaction(reference)
+#     except PaystackError as exc:
+#         raise CustomAPIException(f"Payment verification failed: {exc.message}", 402, "PAYMENT_FAILED")
+
+#     if tx.get("status") != "success":
+#         payment.status = PaymentStatus.FAILED
+#         raise CustomAPIException("Payment was not successful.", 402, "PAYMENT_NOT_SUCCESS")
+
+#     # Update payment record
+#     payment.status       = PaymentStatus.SUCCESS
+#     payment.amount_paid  = __import__("app.utils.helpers", fromlist=["from_kobo"]).from_kobo(tx.get("amount", 0))
+#     payment.channel      = tx.get("channel")
+#     payment.paid_at      = datetime.now(timezone.utc)
+#     payment.paystack_id  = str(tx.get("id", ""))
+#     if tx.get("authorization"):
+#         payment.card_type = tx["authorization"].get("card_type")
+#         payment.bank      = tx["authorization"].get("bank")
+#         payment.last4     = tx["authorization"].get("last4")
+
+#     meta     = payment.metadata_json or {}
+#     plan_id  = meta.get("plan_id")
+#     is_topup = meta.get("is_topup", False)
+#     plan     = db.get(ServicePlan, plan_id) if plan_id else None
+
+#     if not plan:
+#         raise CustomAPIException("Plan not found in payment metadata.", 500)
+
+#     renewal  = next_renewal_date(plan.interval.value)
+#     today    = datetime.now(timezone.utc).date()
+
+#     existing = db.query(CustomerSubscription).filter(
+#         CustomerSubscription.user_id == user.id,
+#         CustomerSubscription.plan_id == plan.id,
+#         CustomerSubscription.status.in_([SubscriptionStatus.ACTIVE, SubscriptionStatus.PAUSED, SubscriptionStatus.PENDING]),
+#     ).first()
+
+#     if existing and is_topup:
+#         existing.top_up_reset(plan.units, renewal, reference)
+#         payment.subscription_id = existing.id
+#         sub = existing
+#         msg = f"{plan.name} topped up! {plan.units} fresh units, billing reset from today."
+#         background.add_task(notify_subscription_topped_up, db, user.id, plan.name, plan.units)
+#     else:
+#         sub = CustomerSubscription(
+#             user_id=user.id, plan_id=plan.id,
+#             status=SubscriptionStatus.ACTIVE,
+#             units=plan.units, units_used=0,
+#             subscribed_at=today, renews_at=renewal,
+#             amount_paid=payment.amount_paid,
+#             payment_reference=reference,
+#             paystack_subscription_code=tx.get("plan_object", {}).get("subscription_code"),
+#         )
+#         db.add(sub); db.flush()
+#         payment.subscription_id = sub.id
+#         msg = f"Subscribed to {plan.name}! {plan.units} units added."
+#         background.add_task(notify_subscription_activated, db, user.id, plan.name, plan.units)
+#         background.add_task(send_subscription_activated,
+#                             user.email, user.names, plan.name, plan.units, str(renewal))
+
+#     return api_response(
+#         success=True,
+#         message=msg,
+#         data={
+#             "subscription": SubscriptionOut.from_orm_with_plan(sub),
+#             "payment_reference": reference,
+#             "is_topup": is_topup,
+#         },
+#     )
+
+
+
+
 def _verify_and_activate(reference: str, user: User, background: BackgroundTasks, db: Session):
-    """Shared logic: verify Paystack transaction → activate/top-up subscription."""
+    """Shared logic: verify payment (against whichever provider actually
+    processed it) → activate/top-up subscription."""
     payment = db.query(Payment).filter(Payment.reference == reference).first()
     if not payment:
         raise NotFoundError("Payment", reference)
 
     if payment.status == PaymentStatus.SUCCESS:
-        return api_response(
-            success=True,
-            message="Subscription already active.",
-        )
+        return api_response(success=True, message="Subscription already active.")
+
+    provider_client = get_provider(payment.provider)
 
     try:
-        tx = get_paystack().verify_transaction(reference)
-    except PaystackError as exc:
+        tx = provider_client.verify_transaction(reference)
+    except PaymentProviderError as exc:
         raise CustomAPIException(f"Payment verification failed: {exc.message}", 402, "PAYMENT_FAILED")
 
     if tx.get("status") != "success":
         payment.status = PaymentStatus.FAILED
         raise CustomAPIException("Payment was not successful.", 402, "PAYMENT_NOT_SUCCESS")
 
-    # Update payment record
-    payment.status       = PaymentStatus.SUCCESS
-    payment.amount_paid  = __import__("app.utils.helpers", fromlist=["from_kobo"]).from_kobo(tx.get("amount", 0))
-    payment.channel      = tx.get("channel")
-    payment.paid_at      = datetime.now(timezone.utc)
-    payment.paystack_id  = str(tx.get("id", ""))
+    payment.status      = PaymentStatus.SUCCESS
+    payment.amount_paid = from_kobo(tx.get("amount", 0))
+    payment.channel     = tx.get("channel")
+    payment.paid_at     = datetime.now(timezone.utc)
+    payment.paystack_id = str(tx.get("id", ""))
     if tx.get("authorization"):
         payment.card_type = tx["authorization"].get("card_type")
         payment.bank      = tx["authorization"].get("bank")
@@ -352,8 +536,8 @@ def _verify_and_activate(reference: str, user: User, background: BackgroundTasks
     if not plan:
         raise CustomAPIException("Plan not found in payment metadata.", 500)
 
-    renewal  = next_renewal_date(plan.interval.value)
-    today    = datetime.now(timezone.utc).date()
+    renewal = next_renewal_date(plan.interval.value)
+    today   = datetime.now(timezone.utc).date()
 
     existing = db.query(CustomerSubscription).filter(
         CustomerSubscription.user_id == user.id,
@@ -381,8 +565,11 @@ def _verify_and_activate(reference: str, user: User, background: BackgroundTasks
         payment.subscription_id = sub.id
         msg = f"Subscribed to {plan.name}! {plan.units} units added."
         background.add_task(notify_subscription_activated, db, user.id, plan.name, plan.units)
-        background.add_task(send_subscription_activated,
-                            user.email, user.names, plan.name, plan.units, str(renewal))
+        background.add_task(
+            send_subscription_activated,
+            user.email, user.names, plan.name, 
+            plan.units, str(renewal)
+        )
 
     return api_response(
         success=True,
@@ -404,7 +591,7 @@ def cancel_subscription(
     sub = db.query(CustomerSubscription).filter(CustomerSubscription.id == sub_id, CustomerSubscription.user_id == user.id).first()
     if not sub:
         raise NotFoundError("Subscription", sub_id)
-    if sub.status == SubscriptionStatus.CANCELLED:
+    if sub.status == SubscriptionStatus.CANCELED:
         return api_response(success=True, message="Subscription already cancelled.")
 
     # Cancel on Paystack if we have a code

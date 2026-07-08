@@ -10,7 +10,7 @@ from app.db.database import get_db
 from app.enums.stitch import OrderType, PaymentStatus 
 from app.enums.billing import SubscriptionStatus
 from app.models.orders import Order
-from app.models.payments import Payment
+from app.models.payments.base import Payment
 from app.models.tenant_billing import CustomerSubscription
 from app.models.users import User
 from app.models.rbac import Role

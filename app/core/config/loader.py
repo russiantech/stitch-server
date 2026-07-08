@@ -11,7 +11,7 @@ from typing import Optional
 from dotenv import load_dotenv
 
 from .models import (
-    AppConfig, CloudinaryConfig, GeneralConfig, HostingConfig, DatabaseConfig,
+    AppConfig, CloudinaryConfig, FlutterWaveConfig, GeneralConfig, HostingConfig, DatabaseConfig, OpayConfig, PalmPayConfig,
     RedisConfig, SecurityConfig, MailConfig, PaymentsConfig,
     PaystackConfig, S3Config, CookieConfig,
     MonitoringConfig, StorageConfig, SupabaseStorageConfig,
@@ -192,7 +192,10 @@ def get_app_config() -> AppConfig:
         ),
         
         payments_config=PaymentsConfig(
+            
             currency=os.getenv("APP_PAYMENTS_CURRENCY", "NGN"),
+            default_provider=os.getenv("APP_DEFAULT_PAYMENT_PROVIDER", "opay"),
+            
             paystack=PaystackConfig(
                 secret_key=os.getenv("APP_PAYSTACK_SECRET_KEY"),
                 public_key=os.getenv("APP_PAYSTACK_PUBLIC_KEY"),
@@ -202,6 +205,23 @@ def get_app_config() -> AppConfig:
                 ),
                 webhook_secret=os.getenv("PAYSTACK_WEBHOOK_SECRET"),
             ),
+
+            opay=OpayConfig(
+                merchant_id=os.getenv("APP_OPAY_MERCHANT_ID"),
+                public_key=os.getenv("APP_OPAY_PUBLIC_KEY"),
+                secret_key=os.getenv("APP_OPAY_SECRET_KEY"),
+                sandbox=_b("APP_OPAY_SANDBOX", True),
+            ),
+            
+            palmpay=PalmPayConfig(
+                api_key=os.getenv("PALMPAY_API_KEY", ""),
+                secret_key=os.getenv("PALMPAY_SECRET_KEY", ""),
+                base_url=os.getenv("PALMPAY_BASE_URL", "https://api.palmpay.com"),
+                enabled=False,
+            )
+            
+            # flutterwave=FlutterWaveConfig(...),
+            
         ),
         
         monitoring_config=MonitoringConfig(

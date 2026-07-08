@@ -9,7 +9,7 @@ from .orders import (
 from .tenant_billing import *
 from .platform_billing import *
 
-from .payments import Payment, PaystackWebhookEvent
+from .payments.base import Payment, PaystackWebhookEvent
 from .products import Product, ProductImage
 from .category import Category  # ← Category lives here, not in products.py
 from .association_tables import ProductCategory  # ← Association table lives here

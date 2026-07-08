@@ -121,3 +121,17 @@ async def toggle_public_signup(
         f"Public signup {'enabled' if allow else 'disabled'}.",
         data={"allow_public_signup": org.allow_public_signup},
     )
+
+@router.get("/lookup/{invite_code}", summary="Public: resolve an invite code to basic org info (pre-signup)")
+def lookup_org_by_code(invite_code: str, db: Session = Depends(get_db)):
+    org = db.query(Organization).filter(
+        Organization.invite_code == invite_code.upper().strip(),
+        Organization.deleted == False,
+    ).first()
+    if not org:
+        raise NotFoundError("Organization", invite_code)
+    if not org.is_active or org.is_paused:
+        raise ForbiddenError("This organization is not currently accepting new members.")
+    if not org.allow_public_signup:
+        raise ForbiddenError("This organization requires an admin invitation to join.")
+    return api_response(True, "Organization found.", data={"name": org.name, "invite_code": org.invite_code})

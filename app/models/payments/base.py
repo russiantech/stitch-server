@@ -9,7 +9,7 @@ from sqlalchemy import DateTime, Enum, ForeignKey, Integer, Numeric, String, Tex
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
-from app.models.base import StitchBase
+from app.models.base import StitchBase, TenantModel
 from app.enums.stitch import PaymentStatus, PaymentProvider, PaymentPurpose
 
 if TYPE_CHECKING:
@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from app.models.organization import Organization
 
 
-class Payment(StitchBase, Base):
+class Payment(TenantModel, Base):
     __tablename__ = "payments"
     __table_args__ = (
         Index("ix_payments_user_id", "user_id"),
@@ -89,7 +89,7 @@ class Payment(StitchBase, Base):
         return f"<Payment id={self.id} ref={self.reference!r} status={self.status} amount={self.amount}>"
 
 
-class PaystackWebhookEvent(StitchBase, Base):
+class PaystackWebhookEvent(TenantModel, Base):
     """Raw Paystack webhook events — for idempotency and audit."""
     __tablename__ = "paystack_webhook_events"
 

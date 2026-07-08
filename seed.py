@@ -103,7 +103,7 @@ def seed_org_and_users(db):
         if created:
             log.info("Created role: %s", name)
 
-    password = "Edidem.800" # or "Edidem12
+    password = "Edidem.800" # or "Edidem12 
     def ensure_user(*, username, email, names, phone, role_name, is_org_admin=False, password=password):
         user = db.query(User).filter_by(email=email).first()
         if user:

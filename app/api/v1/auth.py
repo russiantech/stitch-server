@@ -574,6 +574,38 @@ async def resend_signup_code(
     return await _reissue_signup_code(background_tasks, token)
 
 
+# Invites
+INVITE_ACCEPT_PREFIX = "stitch:invite_accept:"
+INVITE_ACCEPT_TTL_SECONDS = 60 * 60 * 24 * 7  # 7 days
+
+@router.post("/accept-invite", summary="Set password and activate an admin-created account")
+async def accept_invite(
+    data: dict,
+    db: Session = Depends(get_db),
+):
+    token = (data or {}).get("token", "")
+    new_password = (data or {}).get("new_password", "")
+    if not token or not new_password:
+        raise ValidationException("Token and new password are required.")
+    if len(new_password) < 8:
+        raise ValidationException("Password must be at least 8 characters.")
+
+    key = f"{INVITE_ACCEPT_PREFIX}{token}"
+    staged = rget(key)
+    if not staged:
+        raise BadRequestError("This invite link is invalid or has expired. Ask an admin to resend it.", error_code="INVITE_EXPIRED")
+
+    user = db.query(User).filter(User.id == staged["user_id"], User.deleted == False).first()
+    if not user:
+        raise NotFoundError("User", staged["user_id"])
+
+    user.password_hash = hash_password(new_password)
+    user.status = UserStatus.ACTIVE
+    db.commit()
+    rdel(key)
+
+    return api_response(True, "Account activated. You can now sign in.", data={"email": user.email})
+
 # ─────────────────────────────────────────────────────────────────────────
 # Admin config: toggle public signup
 # ─────────────────────────────────────────────────────────────────────────

@@ -75,8 +75,10 @@ class UserAdminUpdate(UserUpdate):
     roles: Optional[List[UserRole]] = None
     status: Optional[UserStatus] = None
     is_verified: Optional[bool]  = None
+    is_org_admin: Optional[bool] = None
+    organization_id: Optional[str] = None
 
-
+    
 class InviteUserRequest(BaseModel):
     names: str              = Field(..., min_length=2, max_length=100)
     email: EmailStr

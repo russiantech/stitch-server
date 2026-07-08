@@ -141,9 +141,13 @@ class PaymentStatus(str, enum.Enum):
 
 
 class PaymentProvider(str, enum.Enum):
-    PAYSTACK = "paystack"
-    MANUAL   = "manual"
-    CASH     = "cash"
+    PAYSTACK        = "paystack"
+    OPAY            = "opay"
+    PALMPAY         = "palmpay"
+    FLUTTERWAVE     = "flutterwave"
+    MANUAL          = "manual"
+    CASH            = "cash"
+    
 
 
 class PaymentPurpose(str, enum.Enum):

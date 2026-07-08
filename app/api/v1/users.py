@@ -49,6 +49,7 @@ from app.schemas.users import (
 )
 from app.core.security.auth import hash_password
 from app.utils.responses import api_response
+from app.services.redis_service import rset
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["users"])
@@ -554,15 +555,38 @@ async def invite_user(
     db.refresh(invited)
 
     from app.core.config import get_app_config
-    frontend_url = get_app_config().hosting_config.frontend_url
-    invite_url = f"{frontend_url}/accept-invite?email={invited.email}"
+    
+    # frontend_url = get_app_config().hosting_config.frontend_url
+    # invite_url = f"{frontend_url}/accept-invite?email={invited.email}"
 
-    from app.services.email_service import send_invite
-    background.add_task(send_invite, invited.email, current_user.names, role_name, invite_url)
+    # from app.services.email_service import send_invite
+    # background.add_task(send_invite, invited.email, current_user.names, role_name, invite_url)
+    
+    # logger.info("%s invited %s (%s) to org %s", current_user.username, invited.username, role_name, org.name)
+    # return api_response(True, "Invitation sent.", data=invited.get_summary(), status_code=201)
+
+    # v2
+    invite_token = _secrets.token_urlsafe(32)
+    rset(f"stitch:invite_accept:{invite_token}", {"user_id": str(invited.id)}, ttl=60 * 60 * 24 * 7)
+
+    frontend_url = get_app_config().hosting_config.frontend_url
+    invite_url = f"{frontend_url}/accept-invite?token={invite_token}"
+
+    email_sent = True
+    try:
+        from app.services.email_service import send_invite
+        email_sent = send_invite(invited.email, current_user.names, role_name, invite_url)
+    except Exception as exc:
+        logger.error("Failed to send invite email to %s: %s", invited.email, exc)
+        email_sent = False
 
     logger.info("%s invited %s (%s) to org %s", current_user.username, invited.username, role_name, org.name)
-    return api_response(True, "Invitation sent.", data=invited.get_summary(), status_code=201)
-
+    return api_response(
+        True,
+        "Invitation created." if email_sent else "Invitation created, but the email could not be sent. Please share the invite link manually.",
+        data={**invited.get_summary(), "invite_url": invite_url, "email_sent": email_sent},
+        status_code=201,
+    )
 
 # ─────────────────────────────────────────────────────────────────────────
 # Admin: role assignment

@@ -25,7 +25,7 @@ from app.enums.stitch import (
 
 if TYPE_CHECKING:
     from app.models.users import User
-    from app.models.payments import Payment
+    from app.models.payments.base import Payment
     from app.models.pricing import DeliveryArea, GarmentType
     from app.models.tenant_billing import CustomerSubscription
 

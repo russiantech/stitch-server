@@ -5,10 +5,12 @@ Uses StitchBase (not TenantModel) because Organization is the tenant
 root — it cannot be scoped to itself.
 """
 
+from datetime import datetime
+from decimal import Decimal
 import uuid
-from typing import Optional, TYPE_CHECKING
+from typing import List, Optional, TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 import secrets
@@ -19,6 +21,8 @@ from app.models.platform_billing import OrganizationSubscription
 
 if TYPE_CHECKING:
     from app.models.users import User
+    from app.models.payments.providers import TenantProviderAccount
+
 
 class Organization(StitchBase, Base):
 
@@ -51,6 +55,21 @@ class Organization(StitchBase, Base):
     # trialing | active | past_due | canceled
     subscription_ends_at: Mapped[Optional[DateTime]] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+    
+    # ── Payout configuration ─────────────────────────────────────────────
+    preferred_provider: Mapped[str] = mapped_column(String(20), default="opay", nullable=False)
+    payout_bank_code: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    payout_account_number: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    payout_account_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)  # Paystack-verified name
+    platform_fee_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0.00"), nullable=False)
+    settlement_schedule: Mapped[str] = mapped_column(String(20), default="auto", nullable=False, )  # "auto" only for now
+    payout_configured_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # ── Per-provider subaccount codes (a tenant may have one per provider
+    #    they've connected — most will only ever use their default) ──────
+    provider_accounts: Mapped[List["TenantProviderAccount"]] = relationship(
+        "TenantProviderAccount", back_populates="organization", cascade="all, delete-orphan"
     )
 
     # ── Ownership ─────────────────────────────────────────────────────────

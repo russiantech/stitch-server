@@ -1,5 +1,11 @@
 from enum import Enum
 
+class PaymentProvider(str, Enum):
+    PAYSTACK = "paystack"
+    OPAY = "opay"
+    PALMPAY = "palmpay"
+    FLUTTERWAVE = "flutterwave"
+
 class BillingModel(str, Enum):
     FREE = "free"
     FLAT_RATE = "flat_rate"

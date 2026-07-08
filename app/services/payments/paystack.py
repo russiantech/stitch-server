@@ -1,5 +1,5 @@
 """
-app/services/paystack_service.py — Full Paystack v2 API integration for Stitch.
+app/services/payments/paystack.py — Full Paystack v2 API integration for Stitch.
 Handles: initialize, verify, subscriptions (create/cancel/pause/resume/manage-link),
 charge authorization, refunds, and plan management.
 """
@@ -7,12 +7,14 @@ import hashlib
 import hmac
 import logging
 from decimal import Decimal
+import socket
 from typing import Any, Dict, Optional
 
 import httpx
 
 from app.core.config import get_app_config
 from app.utils.helpers import to_kobo
+from app.services.payments.base import PaymentProviderBase
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +27,9 @@ class PaystackError(Exception):
         self.raw = raw or {}
 
 
-class PaystackService:
+# class PaystackService:
+class PaystackService(PaymentProviderBase):
+    name = "paystack"
     BASE = "https://api.paystack.co"
     TIMEOUT = 30
 
@@ -53,6 +57,21 @@ class PaystackService:
         except httpx.RequestError as exc:
             raise PaystackError(f"Network error: {exc}", 502)
 
+    # def _get(self, path: str, params: Optional[dict] = None) -> dict:
+    #     url = f"{self.BASE}{path}"
+    #     try:
+    #         r = httpx.get(url, params=params or {}, headers=self._headers(), timeout=self.TIMEOUT)
+    #         data = r.json()
+    #         if not data.get("status"):
+    #             raise PaystackError(data.get("message", "Paystack error"), r.status_code, data)
+    #         return data
+    #     except httpx.TimeoutException:
+    #         raise PaystackError("Paystack request timed out", 504)
+    #     except httpx.RequestError as exc:
+    #         raise PaystackError(f"Network error: {exc}", 502)
+
+    # v2
+    # app/services/payments/paystack.py — improved error messages
     def _get(self, path: str, params: Optional[dict] = None) -> dict:
         url = f"{self.BASE}{path}"
         try:
@@ -62,10 +81,17 @@ class PaystackService:
                 raise PaystackError(data.get("message", "Paystack error"), r.status_code, data)
             return data
         except httpx.TimeoutException:
-            raise PaystackError("Paystack request timed out", 504)
+            raise PaystackError("Paystack request timed out. Please try again.", 504)
+        except httpx.ConnectError as exc:
+            if isinstance(exc.__cause__, socket.gaierror) or "getaddrinfo" in str(exc):
+                raise PaystackError(
+                    "Could not reach Paystack — this usually means a temporary network or DNS issue. Please try again in a moment.",
+                    503,
+                )
+            raise PaystackError(f"Could not connect to Paystack: {exc}", 502)
         except httpx.RequestError as exc:
             raise PaystackError(f"Network error: {exc}", 502)
-
+        
     def _put(self, path: str, payload: dict) -> dict:
         url = f"{self.BASE}{path}"
         r = httpx.put(url, json=payload, headers=self._headers(), timeout=self.TIMEOUT)
@@ -84,6 +110,7 @@ class PaystackService:
         callback_url: Optional[str] = None,
         metadata: Optional[dict] = None,
         plan_code: Optional[str] = None,
+        subaccount_code: Optional[str] = None,
         channels: Optional[list] = None,
     ) -> dict:
         """
@@ -103,7 +130,11 @@ class PaystackService:
             payload["plan"] = plan_code   # ← Paystack recurring plan
         if channels:
             payload["channels"] = channels
+        if subaccount_code:
+            payload["subaccount"] = subaccount_code
+            payload["bearer_type"] = "account"  # platform (you) absorbs the Paystack processing fee, not the tenant
         data = self._post("/transaction/initialize", payload)
+        
         return data["data"]   # {authorization_url, access_code, reference}
 
     def verify_transaction(self, reference: str) -> dict:
@@ -188,6 +219,32 @@ class PaystackService:
         data = self._post("/customer", payload)
         return data["data"]
 
+    # ── Subaccounts (split payments) ──────────────────────────────────────
+
+    def create_subaccount(self, business_name: str, bank_code: str, account_number: str, percentage_charge: float) -> dict:
+        """percentage_charge = the TENANT's share (e.g. 98.5 means tenant
+        keeps 98.5%, platform_fee_percent implicitly = 100 - this)."""
+        payload = {
+            "business_name": business_name,
+            "bank_code": bank_code,
+            "account_number": account_number,
+            "percentage_charge": percentage_charge,
+        }
+        data = self._post("/subaccount", payload)
+        return data["data"]
+
+    def update_subaccount(self, subaccount_code: str, **kwargs) -> dict:
+        payload = {k: v for k, v in kwargs.items() if v is not None}
+        return self._put(f"/subaccount/{subaccount_code}", payload)
+
+    def resolve_account_number(self, account_number: str, bank_code: str) -> dict:
+        data = self._get("/bank/resolve", {"account_number": account_number, "bank_code": bank_code})
+        return data["data"]
+
+    def list_banks(self) -> list:
+        data = self._get("/bank", {"country": "nigeria", "currency": "NGN"})
+        return data["data"]
+    
     # ── Refund ────────────────────────────────────────────────────────────────
 
     def refund_transaction(self, transaction_ref: str, amount: Optional[Decimal] = None) -> dict:

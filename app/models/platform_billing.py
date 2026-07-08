@@ -23,7 +23,7 @@ from app.enums.billing import (
 
 if TYPE_CHECKING:
     from app.models.organization import Organization
-    from app.models.payments import Payment
+    from app.models.payments.base import Payment
 
 # ─────────────────────────────────────────────────────────────────────────
 # SaaSPlan

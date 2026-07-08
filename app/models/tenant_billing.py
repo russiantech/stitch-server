@@ -16,12 +16,12 @@ from app.db.database import Base
 from app.models.base import StitchBase, TenantModel
 from app.enums.stitch import PlanInterval, UsagePaymentSource
 from app.enums.billing import SubscriptionStatus
-from app.models.payments import Payment
 
 if TYPE_CHECKING:
     from app.models.users import User
     from app.models.orders import Order
-    from app.models.payments import Payment
+    from app.models.payments.base import Payment
+    from app.models.payments.base import Payment
 
 
 # ─────────────────────────────────────────────────────────────────────────

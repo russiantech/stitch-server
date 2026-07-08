@@ -172,10 +172,28 @@ class PaystackConfig(BaseModel):
     webhook_secret: Optional[str] = None
     timeout: int = 30
 
+class OpayConfig(BaseModel):
+    merchant_id: Optional[str] = None
+    public_key: Optional[str] = None
+    secret_key: Optional[str] = None
+    sandbox: bool = True   # uses testapi.opaycheckout.com until flipped to False
+    
+class PalmPayConfig(BaseModel):
+    api_key: str = Field(default="")
+    secret_key: str = Field(default="")
+    base_url: str = Field(default="https://api.palmpay.com")
+    enabled: bool = Field(default=False)
+
+class FlutterWaveConfig(BaseModel):
+    pass
 
 class PaymentsConfig(BaseModel):
     currency: str = "NGN"
+    default_provider: str = "opay"
     paystack: PaystackConfig = PaystackConfig()
+    opay: OpayConfig = OpayConfig()
+    palmpay: PalmPayConfig = PalmPayConfig()
+    fluutterwave: FlutterWaveConfig = FlutterWaveConfig()
 
 
 class MonitoringConfig(BaseModel):
