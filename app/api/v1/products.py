@@ -258,6 +258,7 @@ async def _save_images(product_id: str, files: List[UploadFile], db: Session):
         _validate_upload(file, contents)
 
         url = upload_file(contents, file.filename, folder="products")
+        
         ext = Path(file.filename).suffix.lower()
         media_type = "video" if ext in (".mp4", ".webm", ".mov") else "image"
         db.add(ProductImage(

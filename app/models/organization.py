@@ -58,11 +58,11 @@ class Organization(StitchBase, Base):
     )
     
     # ── Payout configuration ─────────────────────────────────────────────
-    preferred_provider: Mapped[str] = mapped_column(String(20), default="opay", nullable=False)
+    preferred_provider: Mapped[str] = mapped_column(String(20), default="paystack", server_default="paystack", nullable=False)
     payout_bank_code: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
     payout_account_number: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     payout_account_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)  # Paystack-verified name
-    platform_fee_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0.00"), nullable=False)
+    platform_fee_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0.00"), nullable=False, server_default="0.01")
     settlement_schedule: Mapped[str] = mapped_column(String(20), default="auto", nullable=False, )  # "auto" only for now
     payout_configured_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 

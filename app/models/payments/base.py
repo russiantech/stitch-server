@@ -5,11 +5,11 @@ from typing import Optional, TYPE_CHECKING
 import uuid
 
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, Numeric, String, Text, JSON, Index
+from sqlalchemy import DateTime, Enum, ForeignKey, Numeric, String, Text, JSON, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
-from app.models.base import StitchBase, TenantModel
+from app.models.base import TenantModel
 from app.enums.stitch import PaymentStatus, PaymentProvider, PaymentPurpose
 
 if TYPE_CHECKING:

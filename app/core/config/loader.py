@@ -112,6 +112,7 @@ def get_app_config() -> AppConfig:
             samesite=os.getenv("APP_COOKIE_SAMESITE", "lax"),
         ),
         ),
+        
         storage_config=StorageConfig(
             provider=os.getenv("APP_STORAGE_PROVIDER", "supabase"),
             max_file_size_mb=_i("APP_MAX_FILE_SIZE_MB", 50),
