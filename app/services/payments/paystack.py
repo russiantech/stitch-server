@@ -57,20 +57,6 @@ class PaystackService(PaymentProviderBase):
         except httpx.RequestError as exc:
             raise PaystackError(f"Network error: {exc}", 502)
 
-    # def _get(self, path: str, params: Optional[dict] = None) -> dict:
-    #     url = f"{self.BASE}{path}"
-    #     try:
-    #         r = httpx.get(url, params=params or {}, headers=self._headers(), timeout=self.TIMEOUT)
-    #         data = r.json()
-    #         if not data.get("status"):
-    #             raise PaystackError(data.get("message", "Paystack error"), r.status_code, data)
-    #         return data
-    #     except httpx.TimeoutException:
-    #         raise PaystackError("Paystack request timed out", 504)
-    #     except httpx.RequestError as exc:
-    #         raise PaystackError(f"Network error: {exc}", 502)
-
-    # v2
     # app/services/payments/paystack.py — improved error messages
     def _get(self, path: str, params: Optional[dict] = None) -> dict:
         url = f"{self.BASE}{path}"
@@ -102,6 +88,46 @@ class PaystackService(PaymentProviderBase):
 
     # ── Transaction ───────────────────────────────────────────────────────────
 
+    # def initialize_transaction(
+    #     self,
+    #     email: str,
+    #     amount: Decimal,
+    #     reference: str,
+    #     callback_url: Optional[str] = None,
+    #     metadata: Optional[dict] = None,
+    #     plan_code: Optional[str] = None,
+    #     subaccount_code: Optional[str] = None,
+    #     channels: Optional[list] = None,
+    # ) -> dict:
+    #     """
+    #     Initialize a payment. If plan_code is supplied, Paystack sets up
+    #     recurring billing automatically (for subscription top-ups).
+    #     """
+    #     payload: Dict[str, Any] = {
+    #         "email": email,
+    #         "amount": to_kobo(amount),
+    #         "reference": reference,
+    #         "currency": "NGN",
+    #         "callback_url": callback_url or self._callback_url,
+    #     }
+    #     if metadata:
+    #         payload["metadata"] = metadata
+    #     if plan_code:
+    #         payload["plan"] = plan_code   # ← Paystack recurring plan
+    #     if channels:
+    #         payload["channels"] = channels
+    #     if subaccount_code:
+    #         payload["subaccount"] = subaccount_code
+    #         payload["bearer_type"] = "account"  # platform (you) absorbs the Paystack processing fee, not the tenant
+    #     data = self._post("/transaction/initialize", payload)
+        
+    #     return data["data"]   # {authorization_url, access_code, reference}
+
+    # app/services/payments/paystack.py — additions to PaystackService
+
+    def _is_test_mode(self) -> bool:
+        return self._secret.startswith("sk_test_")
+
     def initialize_transaction(
         self,
         email: str,
@@ -113,10 +139,6 @@ class PaystackService(PaymentProviderBase):
         subaccount_code: Optional[str] = None,
         channels: Optional[list] = None,
     ) -> dict:
-        """
-        Initialize a payment. If plan_code is supplied, Paystack sets up
-        recurring billing automatically (for subscription top-ups).
-        """
         payload: Dict[str, Any] = {
             "email": email,
             "amount": to_kobo(amount),
@@ -127,15 +149,24 @@ class PaystackService(PaymentProviderBase):
         if metadata:
             payload["metadata"] = metadata
         if plan_code:
-            payload["plan"] = plan_code   # ← Paystack recurring plan
+            payload["plan"] = plan_code
         if channels:
             payload["channels"] = channels
+
         if subaccount_code:
-            payload["subaccount"] = subaccount_code
-            payload["bearer_type"] = "account"  # platform (you) absorbs the Paystack processing fee, not the tenant
+            if self._is_test_mode():
+                logger.warning(
+                    "Ignoring subaccount_code=%s for reference %s — running with a Paystack "
+                    "TEST secret key, but subaccounts are mode-specific and this code was very "
+                    "likely created under a LIVE key. Sending it would fail with 'Invalid Subaccount.'",
+                    subaccount_code, reference,
+                )
+            else:
+                payload["subaccount"] = subaccount_code
+                payload["bearer_type"] = "account"
+
         data = self._post("/transaction/initialize", payload)
-        
-        return data["data"]   # {authorization_url, access_code, reference}
+        return data["data"]
 
     def verify_transaction(self, reference: str) -> dict:
         data = self._get(f"/transaction/verify/{reference}")

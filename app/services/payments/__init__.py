@@ -15,7 +15,7 @@ _PROVIDERS = {
 _instances: dict = {}
 
 def get_provider(name: str) -> PaymentProviderBase:
-    name = (name or "opay").lower()
+    name = (name or "paystack").lower()
     if name not in _PROVIDERS:
         raise ValueError(f"Unknown payment provider: {name}")
     if name not in _instances:

@@ -30,6 +30,7 @@ class TenantProviderAccount(TenantModel, Base):
     subaccount_code: Mapped[str] = mapped_column(String(150), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    # is_test_mode: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     organization: Mapped["Organization"] = relationship("Organization", back_populates="provider_accounts")
 
