@@ -9,7 +9,7 @@ from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, Query, Request
 from sqlalchemy import desc
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.api.deps.auth import get_current_user, require_staff_or_admin
 from app.core.config import get_app_config
@@ -150,6 +150,33 @@ def verify_payment(
 
 # ─── List payments ────────────────────────────────────────────────────────────
 
+# @router.get("")
+# def list_payments(
+#     page: int = Query(1, ge=1),
+#     page_size: int = Query(20, ge=1, le=100),
+#     status: Optional[PaymentStatus] = None,
+#     purpose: Optional[PaymentPurpose] = None,
+#     admin: User = Depends(require_staff_or_admin),
+#     db: Session = Depends(get_db),
+# ):
+#     q = db.query(Payment)
+#     if status:
+#         q = q.filter(Payment.status == status)
+#     if purpose:
+#         q = q.filter(Payment.purpose == purpose)
+#     total = q.count()
+#     items = q.order_by(desc(Payment.created_at)).offset((page-1)*page_size).limit(page_size).all()
+#     return api_response(
+#         success=True,
+#         message="Payments fetched.",
+#         data={
+#             "items": [PaymentOut.model_validate(p) for p in items],
+#             "page": page,
+#             "page_size": page_size,
+#             "total": total,
+#         },
+#     )
+
 @router.get("")
 def list_payments(
     page: int = Query(1, ge=1),
@@ -159,24 +186,27 @@ def list_payments(
     admin: User = Depends(require_staff_or_admin),
     db: Session = Depends(get_db),
 ):
-    q = db.query(Payment)
+    q = db.query(Payment).options(joinedload(Payment.user))
     if status:
         q = q.filter(Payment.status == status)
     if purpose:
         q = q.filter(Payment.purpose == purpose)
     total = q.count()
     items = q.order_by(desc(Payment.created_at)).offset((page-1)*page_size).limit(page_size).all()
+
+    out_items = []
+    for p in items:
+        out = PaymentOut.model_validate(p)
+        if p.user:
+            out.customer_name = p.user.names
+            out.customer_email = p.user.email
+        out_items.append(out)
+
     return api_response(
         success=True,
         message="Payments fetched.",
-        data={
-            "items": [PaymentOut.model_validate(p) for p in items],
-            "page": page,
-            "page_size": page_size,
-            "total": total,
-        },
+        data={"items": out_items, "page": page, "page_size": page_size, "total": total},
     )
-
 
 # ─── Invoice ──────────────────────────────────────────────────────────────────
 

@@ -143,44 +143,59 @@ def _is_super_admin(user: User) -> bool:
 
 
 def _check_email_uniqueness(db: Session, email: str, exclude_user_id: Optional[str] = None) -> None:
-    q = db.query(User).filter(User.email == email, User.deleted == False)  # noqa: E712
+    q = db.query(User).filter(User.email == email)
     if exclude_user_id:
         q = q.filter(User.id != exclude_user_id)
-    if q.first():
-        raise ConflictError(f"An account with this email[{email}] already exists. Consider signing in instead.", field="email")
+    existing = q.first()
+    if existing:
+        if existing.deleted:
+            raise ConflictError(
+                "This email was previously registered. Please use account recovery instead.",
+                field="email",
+                error_code="ACCOUNT_PREVIOUSLY_DELETED"
+            )
+        raise ConflictError(
+            f"An account with this email[{email}] already exists. Consider signing in instead.",
+            field="email"
+        )
 
 
 def _check_username_uniqueness(db: Session, username: str, exclude_user_id: Optional[str] = None) -> None:
-    q = db.query(User).filter(User.username == username, User.deleted == False)  # noqa: E712
+    q = db.query(User).filter(User.username == username)
     if exclude_user_id:
         q = q.filter(User.id != exclude_user_id)
-    if q.first():
-        raise ConflictError(f"An account with this username[{username}] already exists. Consider signing in instead.", field="username")
+    existing = q.first()
+    if existing:
+        if existing.deleted:
+            raise ConflictError(
+                "This username was previously registered. Please use account recovery instead.",
+                field="username",
+                error_code="ACCOUNT_PREVIOUSLY_DELETED"
+            )
+        raise ConflictError(
+            f"An account with this username[{username}] already exists. Consider signing in instead.",
+            field="username"
+        )
 
 
-def _check_phone_uniqueness(db: Session, phone: Optional[str]) -> None:
+def _check_phone_uniqueness(db: Session, phone: Optional[str], exclude_user_id: Optional[str] = None) -> None:
     if not phone:
         return
-    if db.query(User).filter(User.phone == phone, User.deleted == False).first():  # noqa: E712
-        raise ConflictError(f"An account with this phone number[{phone}] already exists. Consider signing in instead.", field="phone")
-
-
-# def _incr_with_window(key: str, window_seconds: int) -> int:
-#     """Approximate atomic increment for rate-limiting counters.
-#     Composed from rget/rset because redis_service has no INCR wrapper.
-#     Not perfectly race-free under extreme concurrency — acceptable for a
-#     soft throttle that doesn't need to be a hard security boundary.
-#     If stricter correctness is ever needed, add a true rincr() using the
-#     underlying client's INCR/EXPIRE pipeline in redis_service.py.
-#     """
-#     current = rget(key)
-#     count = int(current) + 1 if current is not None else 1
-#     if current is None:
-#         rset(key, count, ttl=window_seconds)
-#     else:
-#         rset(key, count) # preserve existing TTL — don't reset the window
-#     return count
-
+    q = db.query(User).filter(User.phone == phone)
+    if exclude_user_id:
+        q = q.filter(User.id != exclude_user_id)
+    existing = q.first()
+    if existing:
+        if existing.deleted:
+            raise ConflictError(
+                "This phone number was previously registered. Please use account recovery instead.",
+                field="phone",
+                error_code="ACCOUNT_PREVIOUSLY_DELETED"
+            )
+        raise ConflictError(
+            f"An account with this phone number[{phone}] already exists. Consider signing in instead.",
+            field="phone"
+        )
 
 def _incr_with_window(key: str, window_seconds: int) -> int:
     """Atomic increment with preserved window. Uses Redis INCR."""
@@ -358,8 +373,8 @@ async def _reissue_signup_code(background_tasks: BackgroundTasks, token: str):
         send_otp, signup_data["email"], signup_data["names"], new_code
     )
     return api_response(
-        True,
-        "Verification code sent! Check your email.",
+        success=True,
+        message="Verification code sent! Check your email.",
         data={"token": token, "email": signup_data["email"], "expires_in_seconds": SIGNUP_TOKEN_TTL_SECONDS},
         status_code=202,
     )
@@ -443,7 +458,9 @@ async def signup_verify(
                 "This organization has reached its user limit. Ask an administrator to upgrade the plan.",
                 limit_type="max_users",
             )
-
+        
+        role_name = signup_data.get("role") or "customer"
+        
         user = create_user(
             db=db,
             username=username,
@@ -455,7 +472,10 @@ async def signup_verify(
             is_org_admin=False,
             email_verified=True,
         )
-        user.is_active = False  # pending admin approval
+        # user.is_active = False  # pending admin approval
+        # customers accounts default to active, while other role specific needs to be activated by admin
+        # user.status = UserStatus.ACTIVE if signup_data.get("role") == "customer" else UserStatus.PENDING
+        user.status = UserStatus.ACTIVE if role_name == "customer" else UserStatus.PENDING
         user.ip = signup_data.get("ip")
         db.commit()
         db.refresh(user)
@@ -468,8 +488,8 @@ async def signup_verify(
             user.username, org.name,
         )
         return api_response(
-            True,
-            "Account created! An administrator must activate your account before you can sign in.",
+            success=True,
+            message="Account created! An administrator must activate your account before you can sign in.",
             data={"user": user.get_summary(), "organization": {"id": org.id, "name": org.name}},
             status_code=201,
         )
@@ -540,8 +560,8 @@ async def signup_verify(
     logger.info("Organization '%s' created by '%s' (first account)", org.name, user.username)
 
     return api_response(
-        True,
-        "Account created successfully! Welcome to Stitch.",
+        success=True,
+        message="Account created successfully! Welcome to Stitch.",
         data={
             "access_token": access_token,
             "refresh_token": refresh_token,
@@ -604,7 +624,7 @@ async def accept_invite(
     db.commit()
     rdel(key)
 
-    return api_response(True, "Account activated. You can now sign in.", data={"email": user.email})
+    return api_response(success=True, message="Account activated. You can now sign in.", data={"email": user.email})
 
 # ─────────────────────────────────────────────────────────────────────────
 # Admin config: toggle public signup

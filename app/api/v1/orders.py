@@ -583,24 +583,45 @@ def _enrich_fashion(order: Order) -> FashionOrderOut:
     )
 
 
+# def _get_order_or_404(order_id: str, db: Session, user: User) -> Order:
+#     q = (db.query(Order)
+#          .options(
+#              joinedload(Order.customer),
+#              joinedload(Order.laundry_detail),
+#              joinedload(Order.fashion_detail),
+#              joinedload(Order.garment_items),
+#              joinedload(Order.status_history).joinedload(OrderStatusHistory.changed_by),
+#              joinedload(Order.delivery_area),
+#          )
+#          .filter(Order.id == order_id, Order.deleted == False))  # noqa: E712
+#     if user.has_role("customer"):
+#         q = q.filter(or_(Order.customer_id == user.id, Order.behalf_user_id == user.id))
+#     order = q.first()
+#     if not order:
+#         raise NotFoundError("Order", order_id)
+#     return order
+
+# v2
 def _get_order_or_404(order_id: str, db: Session, user: User) -> Order:
     q = (db.query(Order)
-         .options(
-             joinedload(Order.customer),
-             joinedload(Order.laundry_detail),
-             joinedload(Order.fashion_detail),
-             joinedload(Order.garment_items),
-             joinedload(Order.status_history).joinedload(OrderStatusHistory.changed_by),
-             joinedload(Order.delivery_area),
-         )
-         .filter(Order.id == order_id, Order.deleted == False))  # noqa: E712
+        #  .options(...)
+        .options(
+            joinedload(Order.customer),
+            joinedload(Order.laundry_detail),
+            joinedload(Order.fashion_detail),
+            joinedload(Order.garment_items),
+            joinedload(Order.status_history).joinedload(OrderStatusHistory.changed_by),
+            joinedload(Order.delivery_area),
+        )
+         .filter(Order.id == order_id, Order.deleted == False))
     if user.has_role("customer"):
         q = q.filter(or_(Order.customer_id == user.id, Order.behalf_user_id == user.id))
+    elif user.has_role("driver") and not user.has_role("admin", "staff", "super_admin"):
+        q = q.filter(Order.assigned_driver_id == user.id)
     order = q.first()
     if not order:
         raise NotFoundError("Order", order_id)
     return order
-
 
 # ─── LAUNDRY ─────────────────────────────────────────────────────────────────
 
@@ -794,6 +815,49 @@ def _deduct_subscription_units(payload, customer_id, order_id: str, staff_id, db
             ))
 
 
+# @router.get("")
+# def list_orders(
+#     page: int = Query(1, ge=1),
+#     page_size: int = Query(20, ge=1, le=100),
+#     order_type: Optional[OrderType] = None,
+#     status: Optional[str] = None,
+#     priority: Optional[OrderPriority] = None,
+#     search: Optional[str] = None,
+#     user: User = Depends(get_current_user),
+#     db: Session = Depends(get_db),
+# ):
+#     q = (db.query(Order)
+#          .options(
+#              joinedload(Order.customer), joinedload(Order.laundry_detail),
+#              joinedload(Order.fashion_detail), joinedload(Order.delivery_area),
+#          )
+#          .filter(Order.deleted == False))  # noqa: E712
+#     if user.has_role("customer"):
+#         q = q.filter(or_(Order.customer_id == user.id, Order.behalf_user_id == user.id))
+#     if order_type:
+#         q = q.filter(Order.order_type == order_type)
+#     if status:
+#         q = q.filter(Order.status == status)
+#     if priority:
+#         q = q.filter(Order.priority == priority)
+#     if search:
+#         term = f"%{search}%"
+#         q = q.join(Order.customer).filter(or_(
+#             Order.reference.ilike(term), User.names.ilike(term), User.phone.ilike(term)
+#         ))
+#     total = q.count()
+#     orders = q.order_by(desc(Order.created_at)).offset((page - 1) * page_size).limit(page_size).all()
+#     items = [_enrich_laundry(o) if o.order_type == OrderType.LAUNDRY else _enrich_fashion(o) for o in orders]
+#     total_pages = (total + page_size - 1) // page_size if page_size else 0
+#     return api_response(True, "Orders fetched.", data={
+#         "items": items,
+#         "pagination": {
+#             "page": page, "page_size": page_size, "total": total,
+#             "total_pages": total_pages, "has_next": page < total_pages, "has_prev": page > 1,
+#         },
+#     })
+
+# v2
 @router.get("")
 def list_orders(
     page: int = Query(1, ge=1),
@@ -802,6 +866,7 @@ def list_orders(
     status: Optional[str] = None,
     priority: Optional[OrderPriority] = None,
     search: Optional[str] = None,
+    assigned_driver_id: Optional[str] = None,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -811,8 +876,19 @@ def list_orders(
              joinedload(Order.fashion_detail), joinedload(Order.delivery_area),
          )
          .filter(Order.deleted == False))  # noqa: E712
+
     if user.has_role("customer"):
         q = q.filter(or_(Order.customer_id == user.id, Order.behalf_user_id == user.id))
+    elif user.has_role("driver") and not user.has_role("admin", "staff", "super_admin"):
+        # A pure driver (no admin/staff role) may only ever see orders
+        # explicitly assigned to them — never the full org order list,
+        # and never another driver's assignments.
+        q = q.filter(Order.assigned_driver_id == user.id)
+    elif assigned_driver_id:
+        # Staff/admin explicitly filtering by a specific driver (e.g. the
+        # Pickups/Deliveries admin screens' "Assign Driver" dropdown view).
+        q = q.filter(Order.assigned_driver_id == assigned_driver_id)
+
     if order_type:
         q = q.filter(Order.order_type == order_type)
     if status:

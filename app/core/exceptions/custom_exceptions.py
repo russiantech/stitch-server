@@ -252,6 +252,20 @@ NotFoundError = ResourceNotFoundException
 # 409 — Conflict
 # ──────────────────────────────────────────────────────────────────────────
 
+# class ConflictError(CustomAPIException):
+#     """A uniqueness/state conflict — duplicate email, username, phone, etc."""
+
+#     def __init__(
+#         self,
+#         message: str = "A conflicting resource already exists.",
+#         field: Optional[str] = None,
+#         details: Optional[Dict[str, Any]] = None,
+#     ):
+#         details = dict(details or {})
+#         if field:
+#             details["field"] = field
+#         super().__init__(message=message, status_code=409, error_code="CONFLICT", details=details)
+
 class ConflictError(CustomAPIException):
     """A uniqueness/state conflict — duplicate email, username, phone, etc."""
 
@@ -259,13 +273,13 @@ class ConflictError(CustomAPIException):
         self,
         message: str = "A conflicting resource already exists.",
         field: Optional[str] = None,
+        error_code: str = "CONFLICT",  # <-- now overridable
         details: Optional[Dict[str, Any]] = None,
     ):
         details = dict(details or {})
         if field:
             details["field"] = field
-        super().__init__(message=message, status_code=409, error_code="CONFLICT", details=details)
-
+        super().__init__(message=message, status_code=409, error_code=error_code, details=details)
 
 class DuplicateResourceException(ConflictError):
     """Back-compat alias for older call sites."""

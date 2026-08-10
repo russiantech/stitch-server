@@ -1,9 +1,10 @@
 """app/schemas/payments.py — Payment initiation, verification, output."""
+
 from datetime import datetime
 from decimal import Decimal
 from typing import Any, Dict, Optional
 from uuid import UUID
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
 from app.enums.stitch import PaymentStatus, PaymentProvider, PaymentPurpose
 
 
@@ -31,12 +32,21 @@ class PaymentOut(BaseModel):
     status: PaymentStatus
     currency: str
     amount: Decimal
-    amount_paid: Optional[Decimal]
-    channel: Optional[str]
-    paid_at: Optional[datetime]
+    amount_paid: Optional[Decimal] = None
+    channel: Optional[str] = None
+    paid_at: Optional[datetime] = None
     created_at: datetime
+    # ── Added for CRM/Billing customer visibility (see item 6 below) ──
+    customer_name: Optional[str] = None
+    customer_email: Optional[str] = None
 
     model_config = {"from_attributes": True}
+
+    @field_serializer("amount", "amount_paid")
+    def _serialize_decimal(self, v: Optional[Decimal]) -> Optional[float]:
+        # Ensures the JSON wire value is a real number, not a string —
+        # fixes NaN bugs anywhere the frontend sums/does math on these fields.
+        return float(v) if v is not None else None
 
 
 class InvoiceCreateRequest(BaseModel):

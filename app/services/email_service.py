@@ -188,8 +188,11 @@ def send_welcome(email: str, name: str) -> bool:
     return send_email(
         to=email, subject=f"Welcome to {cfg.general_config.site_name}! ✂️",
         template="welcome.html",
-        context={"name": name, "site_name": cfg.general_config.site_name,
-                 "frontend_url": cfg.hosting_config.frontend_url},
+        context={
+            "name": name, 
+            "site_name": cfg.general_config.site_name,
+            "frontend_url": cfg.hosting_config.frontend_url
+        },
     )
 
 
@@ -233,8 +236,10 @@ def send_invite(email: str, inviter_name: str, role: str, invite_url: str) -> bo
     return send_email(
         to=email, subject="You've been invited to join Stitch",
         template="invite.html",
-        context={"inviter": inviter_name, "role": role, "invite_url": invite_url,
-                 "site_name": get_app_config().general_config.site_name},
+        context={
+            "inviter": inviter_name, "role": role, 
+            "invite_url": invite_url,
+            "site_name": get_app_config().general_config.site_name},
     )
 
 

@@ -120,10 +120,9 @@ def get_app_config() -> AppConfig:
                 "APP_ALLOWED_IMAGE_TYPES",
                 ["image/jpeg", "image/png", "image/webp", "image/gif"],
             ),
-            allowed_video_types=_list(
-                "APP_ALLOWED_VIDEO_TYPES",
-                ["video/mp4", "video/webm"],
-            ),
+            
+            allowed_video_types=_list("APP_ALLOWED_VIDEO_TYPES", ["video/mp4", "video/webm"],),
+            
             filesystem_base_path=os.getenv("APP_FILESYSTEM_BASE_PATH", "./uploads"),
             s3=S3Config(
                 bucket_name=os.getenv("APP_S3_BUCKET_NAME"),
