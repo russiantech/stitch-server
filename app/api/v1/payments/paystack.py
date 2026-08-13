@@ -372,10 +372,22 @@ def _handle_subscription_create(data: dict, db: Session):
                 CustomerSubscription.plan_id == plan.id,
                 CustomerSubscription.status == SubscriptionStatus.ACTIVE,
             ).order_by(desc(CustomerSubscription.created_at)).first()
+    
+    # if sub:
+    #     sub.paystack_subscription_code = ps_code
+    #     sub.paystack_email_token       = email_tok
+    #     sub.status = SubscriptionStatus.ACTIVE
+
     if sub:
         sub.paystack_subscription_code = ps_code
         sub.paystack_email_token       = email_tok
-        sub.status = SubscriptionStatus.ACTIVE
+        if sub.status == SubscriptionStatus.CANCELED:
+            try:
+                get_paystack().disable_subscription(ps_code, email_tok)
+            except PaystackError as exc:
+                logger.error("Deferred Paystack cancel failed for sub %s: %s", sub.id, exc)
+        else:
+            sub.status = SubscriptionStatus.ACTIVE
 
 
 def _handle_subscription_disable(data: dict, db: Session):

@@ -39,7 +39,7 @@ from app.db.database import create_tables, get_session_maker
 from app.models.organization import Organization
 from app.models.users import User
 from app.models.rbac import Role
-from app.models.pricing import GarmentType, LaundryService, DeliveryArea
+from app.models.pricing import FashionService, GarmentType, LaundryService, DeliveryArea
 from app.models.category import Category
 from app.models.products import Product, ProductImage
 from app.models.inventory import InventoryItem
@@ -174,8 +174,7 @@ def seed_delivery_areas(db):
     for i, (name, price, desc) in enumerate(areas):
         _, created = get_or_create(
             db, DeliveryArea, name=name,
-            defaults=dict(price=Decimal(price), state="Lagos", description=desc,
-                          is_active=True, display_order=i),
+            defaults=dict(price=Decimal(price), state="Lagos", description=desc, is_active=True, display_order=i),
         )
         count += created
     db.commit()
@@ -240,12 +239,37 @@ def seed_laundry_services(db):
     for i, (name, desc, mult, icon) in enumerate(services):
         _, created = get_or_create(
             db, LaundryService, name=name,
-            defaults=dict(description=desc, price_multiplier=Decimal(str(mult)),
-                          icon=icon, is_active=True, display_order=i),
+            defaults=dict(
+                description=desc, 
+                price_multiplier=Decimal(str(mult)),
+                icon=icon, is_active=True, display_order=i
+            ),
         )
         count += created
     db.commit()
     log.info("Laundry services: %d created, %d total", count, len(services))
+
+
+def seed_fashion_services(db):
+    """Seed the global fashion-service catalog. These are ordinary rows
+    (not hardcoded enums) so admins can rename, disable, or delete them
+    through the same CRUD endpoints used for garment types."""
+    services = [
+        ("Custom Tailoring", "fa-ruler-combined", "Made-to-measure garments from scratch", 0),
+        ("Alteration",       "fa-scissors",       "Adjust fit of existing garments", 1),
+        ("Repair",           "fa-wrench",         "Fix damaged clothing items", 2),
+        ("Bespoke Design",   "fa-pen-nib",        "One-of-a-kind custom design consultation", 3),
+        ("Material Pickup",  "fa-truck-pickup",   "We collect your fabric from you", 4),
+    ]
+    count = 0
+    for name, icon, desc, order in services:
+        _, created = get_or_create(
+            db, FashionService, name=name,
+            defaults=dict(icon=icon, description=desc, display_order=order, is_active=True),
+        )
+        count += created
+    db.commit()
+    log.info("Fashion services: %d created, %d total", count, len(services))
 
 
 # ─────────────────────────────────────────────────────────────────────────

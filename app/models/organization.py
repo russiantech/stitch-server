@@ -65,6 +65,9 @@ class Organization(StitchBase, Base):
     platform_fee_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=Decimal("0.00"), nullable=False, server_default="0.01")
     settlement_schedule: Mapped[str] = mapped_column(String(20), default="auto", nullable=False, )  # "auto" only for now
     payout_configured_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    
+    """ Admins can flip this off if they trust drivers to self-assign instantly (small business, one or two drivers) — flexible per your "optional approved by admin" phrasing. """
+    driver_requests_need_approval: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     # ── Per-provider subaccount codes (a tenant may have one per provider
     #    they've connected — most will only ever use their default) ──────

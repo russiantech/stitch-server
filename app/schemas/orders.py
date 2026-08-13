@@ -155,7 +155,8 @@ class MeasurementsIn(BaseModel):
 
 
 class FashionOrderCreate(BaseModel):
-    service_type: FashionServiceType
+    # service_type: FashionServiceType
+    service_types: List[str] = Field(..., min_length=1)   # was: service_type: FashionServiceType
     item_name: str                      = Field(..., min_length=1, max_length=255)
     fabric_source: str                  = Field(default="customer")
     measurements: Optional[MeasurementsIn] = None
@@ -164,10 +165,12 @@ class FashionOrderCreate(BaseModel):
 
     preferred_delivery_date: Optional[date] = None
     consultation_date: Optional[date]   = None
+    consultation_time: Optional[str]    = None 
     delivery_address: Optional[str]     = None
 
     priority: OrderPriority             = OrderPriority.NORMAL
     payment_method: PaymentMethodType   = PaymentMethodType.DIRECT
+    payment_reference: Optional[str]    = None
     subscription_id: Optional[str]      = None
     total_amount: Decimal               = Field(default=0, ge=0)
     behalf_user_id: Optional[str]       = None
@@ -195,7 +198,7 @@ class FashionOrderOut(BaseModel):
 
     status: str
     fashion_status: Optional[FashionStatus] = None
-    service_type: Optional[FashionServiceType] = None
+    service_types: List[str] = []
     item_name: Optional[str]
     fabric_source: Optional[str]
     measurements: Optional[Dict[str, Any]]
@@ -208,6 +211,7 @@ class FashionOrderOut(BaseModel):
     total_amount: Decimal
 
     consultation_date: Optional[date]
+    consultation_time: Optional[str]    = None 
     fitting_date: Optional[date]
     delivery_address: Optional[str]
 

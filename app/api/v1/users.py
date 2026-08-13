@@ -570,7 +570,7 @@ async def invite_user(
     rset(f"stitch:invite_accept:{invite_token}", {"user_id": str(invited.id)}, ttl=60 * 60 * 24 * 7)
 
     frontend_url = get_app_config().hosting_config.frontend_url
-    invite_url = f"{frontend_url}/accept-invite?token={invite_token}"
+    invite_url = f"{frontend_url}/orgs/accept-invite?token={invite_token}"
 
     email_sent = True
     try:

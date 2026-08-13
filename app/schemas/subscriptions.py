@@ -102,10 +102,23 @@ class UsageRecordRequest(BaseModel):
     notes: Optional[str]           = None
     payment_amount: Optional[Decimal] = None   # for direct payment records
 
+# 
+class UsageUserOut(BaseModel):
+    id: UUID
+    names: Optional[str] = None
+    username: str
+    email: str
+    
+
+    model_config = {"from_attributes": True}
 
 class CustomerUsageLogOut(BaseModel):
     id: UUID
-    user_id: UUID
+    # user_id: UUID
+    user: Optional[UsageUserOut] = None
+    # email: Optional[str] = None
+    # recorded_by_id: Optional[UUID]
+    recorded_by: Optional[UsageUserOut] = None
     subscription_id: Optional[UUID]
     order_id: Optional[UUID]
     units_deducted: int
@@ -119,8 +132,8 @@ class CustomerUsageLogOut(BaseModel):
     merge_breakdown: Optional[list]
     payment_amount: Optional[Decimal]
     created_at: datetime
-    usernames: Optional[str] = None
-    user_username: Optional[str] = None
+    # usernames: Optional[str] = None
+    # user_username: Optional[str] = None
     recorded_by_name: Optional[str] = None
 
     model_config = {"from_attributes": True}

@@ -1,7 +1,7 @@
 """app/schemas/pricing.py — GarmentType, LaundryService, DeliveryArea schemas."""
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional
+from typing import List, Optional
 from uuid import UUID
 from pydantic import BaseModel, Field
 
@@ -97,4 +97,62 @@ class DeliveryAreaOut(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+# 
+# class FashionFeeSettingsOut(BaseModel):
+#     consultation_fee: Decimal
+#     material_pickup_fee: Decimal
+#     consultation_fee_enabled: bool
+#     material_pickup_fee_enabled: bool
+#     model_config = {"from_attributes": True}
+
+# class FashionFeeSettingsUpdate(BaseModel):
+#     consultation_fee: Optional[Decimal] = Field(None, ge=0)
+#     material_pickup_fee: Optional[Decimal] = Field(None, ge=0)
+#     consultation_fee_enabled: Optional[bool] = None
+#     material_pickup_fee_enabled: Optional[bool] = None
+
+# schema — confirm both fields exist here
+class FashionFeeSettingsOut(BaseModel):
+    consultation_fee: Decimal
+    consultation_fee_enabled: bool
+    consultation_applies_to: Optional[List[str]] = None
+    material_pickup_fee: Decimal
+    material_pickup_fee_enabled: bool
+    material_pickup_applies_to: Optional[List[str]] = None
+    model_config = {"from_attributes": True}
+
+class FashionFeeSettingsUpdate(BaseModel):
+    consultation_fee: Optional[Decimal] = None
+    consultation_fee_enabled: Optional[bool] = None
+    consultation_applies_to: Optional[List[str]] = None
+    material_pickup_fee: Optional[Decimal] = None
+    material_pickup_fee_enabled: Optional[bool] = None
+    material_pickup_applies_to: Optional[List[str]] = None
+# FashionService schemas — for admin-managed fashion service catalogue (replaces the previous hardcoded FashionServiceType enum entirely). 
+# Each org can define its own set of fashion services (names, icons, ordering).
+
+class FashionServiceOut(BaseModel):
+    id: UUID
+    name: str
+    description: Optional[str] = None
+    icon: Optional[str] = None
+    is_active: bool
+    display_order: int
+    is_global: bool = False
+    model_config = {"from_attributes": True}
+
+class FashionServiceCreate(BaseModel):
+    name: str = Field(..., min_length=2)
+    description: Optional[str] = None
+    icon: Optional[str] = None
+    display_order: int = 0
+
+class FashionServiceUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    icon: Optional[str] = None
+    is_active: Optional[bool] = None
+    display_order: Optional[int] = None
 

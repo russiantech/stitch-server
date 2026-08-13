@@ -235,6 +235,17 @@ class PaystackService(PaymentProviderBase):
         payload = {k: v for k, v in kwargs.items() if v is not None}
         return self._put(f"/plan/{plan_code}", payload)
 
+    # app/services/payments/paystack.py
+    # def update_plan(
+    #     self, plan_code: str, name: Optional[str] = None, 
+    #     amount: Optional[Decimal] = None, 
+    #     interval: Optional[str] = None) -> dict:
+    #     payload = {}
+    #     if name: payload["name"] = name
+    #     if amount is not None: payload["amount"] = to_kobo(amount)
+    #     if interval: payload["interval"] = interval
+    #     return self._put(f"/plan/{plan_code}", payload)
+
     def get_plan(self, plan_code: str) -> dict:
         data = self._get(f"/plan/{plan_code}")
         return data["data"]

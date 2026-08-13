@@ -14,6 +14,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from app.services.payments import get_provider
+from app.api.deps.rbac import require_roles
 from sqlalchemy import desc
 from sqlalchemy.orm import Session, joinedload
 
@@ -88,7 +89,8 @@ def create_plan(
     if existing:
         raise ConflictError(f"Plan '{payload.name}' already exists.")
 
-    plan = ServicePlan(**payload.model_dump())
+    # plan = ServicePlan(**payload.model_dump())
+    plan = ServicePlan(organization_id=admin.organization_id, **payload.model_dump())
     db.add(plan); db.flush()
 
     # Optionally create plan on Paystack for recurring billing
@@ -113,24 +115,62 @@ def create_plan(
     )
 
 
-@router.put("/plans/{plan_id}")
+# @router.put("/plans/{plan_id}")
+# def update_plan(
+#     plan_id: str,
+#     payload: PlanUpdate,
+#     admin: User = Depends(require_admin),
+#     db: Session = Depends(get_db),
+# ):
+#     plan = db.get(ServicePlan, plan_id)
+#     if not plan:
+#         raise NotFoundError("Plan", plan_id)
+#     for k, v in payload.model_dump(exclude_none=True).items():
+#         setattr(plan, k, v)
+#     return api_response(
+#         success=True,
+#         message="Plan updated.",
+#         data=PlanOut.model_validate(plan),
+#     )
+
+# v2
+@router.put("/plans/{plan_id}", dependencies=[Depends(require_roles("admin", "super_admin"))])
 def update_plan(
     plan_id: str,
     payload: PlanUpdate,
-    admin: User = Depends(require_admin),
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    plan = db.get(ServicePlan, plan_id)
+    plan = db.query(ServicePlan).filter(
+        ServicePlan.id == plan_id, ServicePlan.organization_id == user.organization_id
+    ).first()
     if not plan:
         raise NotFoundError("Plan", plan_id)
-    for k, v in payload.model_dump(exclude_none=True).items():
-        setattr(plan, k, v)
-    return api_response(
-        success=True,
-        message="Plan updated.",
-        data=PlanOut.model_validate(plan),
-    )
 
+    for k, v in payload.model_dump(exclude_unset=True).items():
+        setattr(plan, k, v)
+
+    # ── Sync to Paystack — this is what's missing ──
+    if plan.paystack_plan_code:
+        try:
+            get_paystack().update_plan(
+                plan.paystack_plan_code,
+                name=plan.name,
+                amount=plan.amount,
+                interval=plan.interval.value,
+            )
+        
+        except PaystackError as exc:
+            logger.error("Failed to sync plan %s to Paystack: %s", plan.id, exc)
+            raise CustomAPIException(
+                f"Plan updated locally, but Paystack sync failed: {exc.message}. "
+                "Customers may still see old pricing until this is resolved.",
+                502, "PAYSTACK_SYNC_FAILED",
+            )
+
+    db.commit()
+    db.refresh(plan)
+    return api_response(True, "Plan updated.", data=PlanOut.model_validate(plan))
 
 @router.delete("/plans/{plan_id}")
 def delete_plan(
@@ -595,13 +635,25 @@ def cancel_subscription(
         return api_response(success=True, message="Subscription already cancelled.")
 
     # Cancel on Paystack if we have a code
+    # if sub.paystack_subscription_code and sub.paystack_email_token:
+    #     try:
+    #         get_paystack().disable_subscription(sub.paystack_subscription_code, sub.paystack_email_token)
+    #     except PaystackError as exc:
+    #         logger.warning("Paystack cancel failed: %s", exc)
+    # v2
     if sub.paystack_subscription_code and sub.paystack_email_token:
         try:
             get_paystack().disable_subscription(sub.paystack_subscription_code, sub.paystack_email_token)
         except PaystackError as exc:
             logger.warning("Paystack cancel failed: %s", exc)
-
-    sub.status       = SubscriptionStatus.CANCELLED
+    elif sub.paystack_subscription_code:
+        logger.warning(
+            "Cancelling subscription %s locally, but no paystack_email_token yet — "
+            "Paystack-side billing may continue until the subscription.create webhook arrives.",
+            sub.id,
+        )
+    
+    sub.status       = SubscriptionStatus.CANCELED
     sub.cancelled_at = datetime.now(timezone.utc)
     return api_response(
         success=True,
@@ -724,9 +776,9 @@ def list_usage(
             out = CustomerUsageLogOut.model_validate(log)
             if log.user:
                 out.user.names     = log.user.names
-                out.user_username = log.user.username
+                # out.user_username = log.user.username
             if log.recorded_by:
-                out.recorded_by_name = log.recorded_by.name
+                out.recorded_by_name = log.recorded_by.names
             items.append(out)
         return api_response(
             success=True,

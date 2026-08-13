@@ -5,13 +5,14 @@ Single Order table (polymorphic) + type-specific extension tables.
 """
 
 from datetime import date
+import datetime
 from decimal import Decimal
 from typing import List, Optional, TYPE_CHECKING
 from uuid import UUID
 
 from sqlalchemy import (
     Boolean, Date, Enum, ForeignKey, Integer,
-    Numeric, String, Text, JSON, Index,
+    Numeric, String, Text, JSON, Index, DateTime,  
 )
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -169,15 +170,22 @@ class FashionOrder(TenantModel, Base):
     fashion_status: Mapped[FashionStatus] = mapped_column(
         Enum(FashionStatus), default=FashionStatus.CONSULTATION, nullable=False
     )
-    service_type: Mapped[FashionServiceType] = mapped_column(
-        Enum(FashionServiceType), nullable=False
-    )
+    # service_type: Mapped[FashionServiceType] = mapped_column(
+    #     Enum(FashionServiceType), nullable=False
+    # )
+    # FashionOrder model — replace service_type with:
+    service_types: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+
     item_name: Mapped[str] = mapped_column(String(255), nullable=False)
     fabric_source: Mapped[str] = mapped_column(String(30), default="customer")
     measurements: Mapped[Optional[dict]] = mapped_column(JSON)
     design_notes: Mapped[Optional[str]] = mapped_column(Text)
     reference_images: Mapped[Optional[list]] = mapped_column(JSON)
     consultation_date: Mapped[Optional[date]] = mapped_column(Date)
+    # app/models/orders.py — FashionOrder additions
+    consultation_time: Mapped[Optional[str]] = mapped_column(String(30))
+    consultation_fee: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0"), nullable=False)
+    material_pickup_fee: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0"), nullable=False)
     fitting_date: Mapped[Optional[date]] = mapped_column(Date)
 
     order: Mapped["Order"] = relationship(
@@ -226,3 +234,27 @@ class OrderGarmentItem(TenantModel, Base):
 
     order: Mapped["Order"] = relationship("Order", back_populates="garment_items")
     garment_type: Mapped[Optional["GarmentType"]] = relationship("GarmentType")
+
+
+
+class OrderDriverRequest(TenantModel, Base):
+    """Audit trail + workflow state for a driver requesting to handle an
+    unassigned order. Kept separate from Order.assigned_driver_id so we
+    retain history even after approval/rejection, and so multiple drivers
+    can request the same order (only one gets approved)."""
+    __tablename__ = "order_driver_requests"
+
+    order_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("orders.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    driver_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)  # pending | approved | rejected
+    request_type: Mapped[str] = mapped_column(String(20), nullable=False)  # pickup | delivery
+    reviewed_by_id: Mapped[Optional[UUID]] = mapped_column(PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+    order: Mapped["Order"] = relationship("Order")
+    driver: Mapped["User"] = relationship("User", foreign_keys=[driver_id])
+

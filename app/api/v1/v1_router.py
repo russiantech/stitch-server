@@ -5,6 +5,11 @@ from app.api.v1 import (
     auth, users, orders, pricing, products, 
     inventory, notifications, analytics, customer_subscriptions, organizations
 )
+
+# from app.api.v1.pricing import (
+#     fashion, laundry, garments, areas
+# )
+
 from app.api.v1.payments import (
     paystack, opay, palmpay, flutterwave, payouts
 )
@@ -20,11 +25,17 @@ v1_router.include_router(customer_subscriptions.router, prefix="/subscriptions",
 v1_router.include_router(payouts.router,               prefix="/payouts",   tags=["Payouts"])
 v1_router.include_router(paystack.router,               prefix="/payments",   tags=["Payments"])
 v1_router.include_router(opay.router,                   prefix="/opay",   tags=["Payments"])
-v1_router.include_router(opay.router,                   prefix="/opay",   tags=["Payments"])
 v1_router.include_router(palmpay.router,                prefix="/palmpay",   tags=["Payments"])
 v1_router.include_router(flutterwave.router,            prefix="/flutterwave",   tags=["Payments"])
 
-v1_router.include_router(pricing.router,                prefix="/pricing",    tags=["Pricing"])
+# # v1_router.include_router(pricing.router,                prefix="/pricing",    tags=["Pricing"])
+# v1_router.include_router(fashion.router,         prefix="/pricing",    tags=["Pricing"])
+# v1_router.include_router(laundry.router,         prefix="/pricing",    tags=["Pricing"])
+# v1_router.include_router(garments.router,         prefix="/pricing",    tags=["Pricing"])
+# v1_router.include_router(areas.router,           prefix="/pricing",      tags=["Pricing"])
+# 
+v1_router.include_router(pricing.router, prefix="/pricing", tags=["Pricing"])
+
 v1_router.include_router(products.router,               prefix="/products",   tags=["Products"])
 v1_router.include_router(inventory.router,              prefix="/inventory",  tags=["Inventory"])
 v1_router.include_router(notifications.router,          prefix="/notifications", tags=["Notifications"])
