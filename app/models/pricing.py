@@ -85,6 +85,7 @@ class FashionService(TenantModel, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     display_order: Mapped[int] = mapped_column(Integer, default=0)
 
+
 # app/models/pricing.py — addition
 class FashionServiceOverride(TenantModel, Base):
     """Lets an organization hide a specific GLOBAL default fashion service

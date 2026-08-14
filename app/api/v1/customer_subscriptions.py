@@ -9,6 +9,7 @@ Key business rules:
 """
 import logging
 from datetime import datetime, timezone
+from operator import or_
 from typing import Optional
 from uuid import UUID
 
@@ -57,27 +58,60 @@ router = APIRouter(tags=["Subscriptions & Plans"])
 
 # ─── PLANS ─────────────────────────────────────────────────────────────────
 
+# @router.get("/plans")
+# def list_plans(db: Session = Depends(get_db)):
+#     plans = db.query(ServicePlan).filter(ServicePlan.is_active == True).order_by(ServicePlan.display_order).all()
+#     return api_response(
+#         success=True,
+#         message="Plans fetched.",
+#         data=[PlanOut.model_validate(p) for p in plans],
+#     )
+
+
+# @router.get("/plans/{plan_id}")
+# def get_plan(plan_id: str, db: Session = Depends(get_db)):
+#     p = db.get(ServicePlan, plan_id)
+#     if not p:
+#         raise NotFoundError("Plan", plan_id)
+#     return api_response(
+#         success=True,
+#         message="Plan fetched.",
+#         data=PlanOut.model_validate(p),
+#     )
+
+# v2
 @router.get("/plans")
-def list_plans(db: Session = Depends(get_db)):
-    plans = db.query(ServicePlan).filter(ServicePlan.is_active == True).order_by(ServicePlan.display_order).all()
-    return api_response(
-        success=True,
-        message="Plans fetched.",
-        data=[PlanOut.model_validate(p) for p in plans],
+def list_plans(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    # Global defaults (organization_id IS NULL) + this org's own custom
+    # plans — never another org's custom plans.
+    plans = (
+        db.query(ServicePlan)
+        .filter(
+            or_(ServicePlan.organization_id.is_(None), ServicePlan.organization_id == user.organization_id),
+            ServicePlan.is_active == True,
+        )
+        .order_by(ServicePlan.display_order)
+        .all()
     )
+    return api_response(success=True, message="Plans fetched.", data=[PlanOut.model_validate(p) for p in plans])
 
 
 @router.get("/plans/{plan_id}")
-def get_plan(plan_id: str, db: Session = Depends(get_db)):
-    p = db.get(ServicePlan, plan_id)
+def get_plan(
+    plan_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    p = db.query(ServicePlan).filter(
+        ServicePlan.id == plan_id,
+        or_(ServicePlan.organization_id.is_(None), ServicePlan.organization_id == user.organization_id),
+    ).first()
     if not p:
         raise NotFoundError("Plan", plan_id)
-    return api_response(
-        success=True,
-        message="Plan fetched.",
-        data=PlanOut.model_validate(p),
-    )
-
+    return api_response(success=True, message="Plan fetched.", data=PlanOut.model_validate(p))
 
 @router.post("/plans", status_code=201)
 def create_plan(

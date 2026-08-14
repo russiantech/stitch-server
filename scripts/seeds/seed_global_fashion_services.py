@@ -4,8 +4,10 @@ organization_id = NULL, visible to every org, never duplicated per-tenant.
 Run ONCE per environment (local, then production)."""
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
+# sys.path.insert(0, str(Path(__file__).resolve().parent))
+project_root = Path(__file__).resolve().parents[2]  # seeds -> scripts -> server
+sys.path.insert(0, str(project_root))
+# 
 from app.db.database import get_session_maker
 from app.models.pricing import FashionService
 
