@@ -249,10 +249,17 @@ def user_subscriptions(
     staff: User = Depends(require_staff_or_admin),
     db: Session = Depends(get_db),
 ):
-    subs = (db.query(CustomerSubscription)
-            .options(joinedload(CustomerSubscription.plan))
+    if not staff.organization_id:
+        raise NotFoundError("Organization", "none")
+    user = db.query(User).filter(User.id == user_id, User.organization_id == staff.organization_id).first()
+    if not user:
+        raise NotFoundError("User", user_id)
+    
+    subs = (
+        db.query(CustomerSubscription).options(joinedload(CustomerSubscription.plan))
             .filter(CustomerSubscription.user_id == user_id)
-            .order_by(desc(CustomerSubscription.created_at)).all())
+            .order_by(desc(CustomerSubscription.created_at)).all()
+        )
     return api_response(
         success=True,
         message="User subscriptions fetched.",
