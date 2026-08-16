@@ -272,6 +272,7 @@ def create_laundry_order(
 
 
 def _validate_subscription_payment(payload, customer_id, db: Session):
+    from app.models.tenant_billing import CustomerSubscription
     if payload.sub_allocations:
         total_garments = sum(g.quantity for g in payload.garments)
         total_alloc = sum(a.units for a in payload.sub_allocations)
