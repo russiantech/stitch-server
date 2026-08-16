@@ -24,7 +24,6 @@ from app.models.orders import (
     FashionOrder, LaundryOrder, Order, OrderGarmentItem, OrderStatusHistory,
 )
 
-from app.models.tenant_billing import CustomerSubscription
 from app.models.users import User
 from app.schemas.orders import (
     FashionOrderCreate, FashionOrderOut, LaundryOrderCreate, LaundryOrderOut, LaundryOrderUpdate,
@@ -306,7 +305,7 @@ def _validate_subscription_payment(payload, customer_id, db: Session):
 
 
 def _deduct_subscription_units(payload, customer_id, order_id: str, staff_id, db: Session):
-    from app.models.platform_billing import CustomerUsageLog
+    from app.models.tenant_billing import CustomerSubscription, CustomerUsageLog
     from app.enums.stitch import UsagePaymentSource
     from sqlalchemy.orm import joinedload as jl
     total_garments = sum(g.quantity for g in payload.garments)
