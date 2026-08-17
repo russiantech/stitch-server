@@ -24,7 +24,6 @@ class GarmentTypeUpdate(BaseModel):
     is_active: Optional[bool]   = None
     display_order: Optional[int] = None
 
-
 class GarmentTypeOut(BaseModel):
     id: UUID
     name: str
@@ -33,11 +32,10 @@ class GarmentTypeOut(BaseModel):
     unit: str
     description: Optional[str]
     is_active: bool
+    is_global: bool = True   # ← add
     display_order: int
     created_at: datetime
-
     model_config = {"from_attributes": True}
-
 
 class LaundryServiceCreate(BaseModel):
     name: str              = Field(..., min_length=2, max_length=150)
@@ -45,7 +43,7 @@ class LaundryServiceCreate(BaseModel):
     price_multiplier: Decimal = Field(default=1.0, ge=0)
     icon: Optional[str]    = None
     display_order: int     = 0
-
+    
 
 class LaundryServiceUpdate(BaseModel):
     name: Optional[str]            = None
@@ -55,7 +53,6 @@ class LaundryServiceUpdate(BaseModel):
     is_active: Optional[bool]      = None
     display_order: Optional[int]   = None
 
-
 class LaundryServiceOut(BaseModel):
     id: UUID
     name: str
@@ -63,9 +60,9 @@ class LaundryServiceOut(BaseModel):
     price_multiplier: Decimal
     icon: Optional[str]
     is_active: bool
+    is_global: bool = False   # ← add
     display_order: int
     created_at: datetime
-
     model_config = {"from_attributes": True}
 
 
@@ -85,7 +82,6 @@ class DeliveryAreaUpdate(BaseModel):
     is_active: Optional[bool] = None
     display_order: Optional[int] = None
 
-
 class DeliveryAreaOut(BaseModel):
     id: UUID
     name: str
@@ -93,25 +89,10 @@ class DeliveryAreaOut(BaseModel):
     state: str
     description: Optional[str]
     is_active: bool
+    is_global: bool = False   # ← add
     display_order: int
     created_at: datetime
-
     model_config = {"from_attributes": True}
-
-
-# 
-# class FashionFeeSettingsOut(BaseModel):
-#     consultation_fee: Decimal
-#     material_pickup_fee: Decimal
-#     consultation_fee_enabled: bool
-#     material_pickup_fee_enabled: bool
-#     model_config = {"from_attributes": True}
-
-# class FashionFeeSettingsUpdate(BaseModel):
-#     consultation_fee: Optional[Decimal] = Field(None, ge=0)
-#     material_pickup_fee: Optional[Decimal] = Field(None, ge=0)
-#     consultation_fee_enabled: Optional[bool] = None
-#     material_pickup_fee_enabled: Optional[bool] = None
 
 # schema — confirm both fields exist here
 class FashionFeeSettingsOut(BaseModel):

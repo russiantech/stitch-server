@@ -6,7 +6,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 from app.enums.stitch import (
     OrderPriority, PaymentMethodType,
-    LaundryStatus, FashionStatus, FashionServiceType,
+    LaundryStatus, FashionStatus,
 )
 
 
@@ -155,7 +155,6 @@ class MeasurementsIn(BaseModel):
 
 
 class FashionOrderCreate(BaseModel):
-    # service_type: FashionServiceType
     service_types: List[str] = Field(..., min_length=1)   # was: service_type: FashionServiceType
     item_name: str                      = Field(..., min_length=1, max_length=255)
     fabric_source: str                  = Field(default="customer")

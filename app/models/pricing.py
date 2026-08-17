@@ -109,3 +109,41 @@ class FashionServiceOverride(TenantModel, Base):
     fashion_service_id: Mapped[UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("fashion_services.id", ondelete="CASCADE"), nullable=False, index=True
     )
+
+# 
+# app/models/pricing.py — additions
+
+class LaundryServiceOverride(TenantModel, Base):
+    """Lets an org hide a specific GLOBAL default laundry service from its
+    own catalog, without affecting any other org. Mirrors FashionServiceOverride."""
+    __tablename__ = "laundry_service_overrides"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "laundry_service_id", name="uq_org_laundry_service_hide"),
+    )
+    laundry_service_id: Mapped[UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("laundry_services.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+
+class GarmentTypeOverride(TenantModel, Base):
+    """Lets an org hide a specific GLOBAL default garment type from its
+    own catalog, without affecting any other org."""
+    __tablename__ = "garment_type_overrides"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "garment_type_id", name="uq_org_garment_type_hide"),
+    )
+    garment_type_id: Mapped[UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("garment_types.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+
+class DeliveryAreaOverride(TenantModel, Base):
+    """Lets an org hide a specific GLOBAL default delivery area from its
+    own catalog, without affecting any other org."""
+    __tablename__ = "delivery_area_overrides"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "delivery_area_id", name="uq_org_delivery_area_hide"),
+    )
+    delivery_area_id: Mapped[UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("delivery_areas.id", ondelete="CASCADE"), nullable=False, index=True
+    )

@@ -18,10 +18,10 @@ from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
-from app.models.base import StitchBase, TenantModel
+from app.models.base import TenantModel
 from app.enums.stitch import (
     OrderType, OrderPriority, PaymentMethodType,
-    LaundryStatus, FashionStatus, FashionServiceType,
+    LaundryStatus, FashionStatus,
 )
 
 if TYPE_CHECKING:
@@ -170,10 +170,6 @@ class FashionOrder(TenantModel, Base):
     fashion_status: Mapped[FashionStatus] = mapped_column(
         Enum(FashionStatus), default=FashionStatus.CONSULTATION, nullable=False
     )
-    # service_type: Mapped[FashionServiceType] = mapped_column(
-    #     Enum(FashionServiceType), nullable=False
-    # )
-    # FashionOrder model — replace service_type with:
     service_types: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
 
     item_name: Mapped[str] = mapped_column(String(255), nullable=False)
