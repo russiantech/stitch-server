@@ -10,6 +10,8 @@ from .tenant_billing import *
 from .platform_billing import *
 
 from .payments.base import Payment, PaystackWebhookEvent
+from .payments.providers import TenantProviderAccount
+
 from .products import Product, ProductImage
 from .category import Category  # ← Category lives here, not in products.py
 from .association_tables import ProductCategory  # ← Association table lives here
@@ -24,7 +26,7 @@ __all__ = [
     "Organization",
     "Order", "LaundryOrder", "FashionOrder", "OrderStatusHistory", "OrderGarmentItem",
     "ServicePlan", "CustomerSubscription", "CustomerUsageLog",
-    "Payment", "PaystackWebhookEvent",
+    "Payment", "PaystackWebhookEvent", "TenantProviderAccount",
     "Product", "Category", "ProductImage", "ProductCategory",
     "InventoryItem", "InventoryLog",
     "Notification", "NotificationType",

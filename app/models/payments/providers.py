@@ -31,7 +31,7 @@ class TenantProviderAccount(TenantModel, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     key_fingerprint: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
-    # is_test_mode: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_test_mode: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     organization: Mapped["Organization"] = relationship("Organization", back_populates="provider_accounts")
 
