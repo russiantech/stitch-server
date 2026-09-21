@@ -26,7 +26,7 @@ from app.schemas.payments import PaymentInitRequest, PaymentOut, InvoiceCreateRe
 from app.services.notification_service import notify_payment_confirmed
 from app.services.payments.paystack import PaystackError, get_paystack
 from app.services.payments import get_provider, PaymentProviderError
-from app.services.payments.provider_resolver import _get_provider_for_org
+from app.services.payments.provider_resolver import _get_provider_for_org, initialize_with_recovery
 from app.utils.helpers import from_kobo, generate_reference, next_renewal_date
 from app.utils.responses import api_response
 
@@ -47,8 +47,27 @@ def initialize_payment(
 
     resolved = _get_provider_for_org(db, user.organization_id)
 
+    # try:
+    #     ps = resolved.client.initialize_transaction(
+    #         email=email,
+    #         amount=payload.amount,
+    #         reference=ref,
+    #         callback_url=payload.callback_url,
+    #         metadata={
+    #             **(payload.metadata or {}),
+    #             "user_id": str(user.id),
+    #             "purpose": payload.purpose.value,
+    #             "provider": resolved.provider_name,
+    #         },
+    #         subaccount_code=resolved.subaccount_code,
+    #     )
+    # except PaymentProviderError as exc:
+    #     raise CustomAPIException(f"Payment provider error: {exc.message}", 502, "PAYMENT_PROVIDER_ERROR")
+
+    # v2
     try:
-        ps = resolved.client.initialize_transaction(
+        ps = initialize_with_recovery(
+            db, resolved,
             email=email,
             amount=payload.amount,
             reference=ref,
@@ -59,11 +78,13 @@ def initialize_payment(
                 "purpose": payload.purpose.value,
                 "provider": resolved.provider_name,
             },
-            subaccount_code=resolved.subaccount_code,
         )
     except PaymentProviderError as exc:
-        raise CustomAPIException(f"Payment provider error: {exc.message}", 502, "PAYMENT_PROVIDER_ERROR")
-
+        raise CustomAPIException(
+            f"Payment provider error: {getattr(exc, 'message', None) or str(exc)}",
+            502, "PAYMENT_PROVIDER_ERROR",
+        )
+    
     payment = Payment(
         user_id=str(user.id),
         order_id=str(payload.order_id) if payload.order_id else None,
@@ -75,7 +96,11 @@ def initialize_payment(
         amount=payload.amount,
         authorization_url=ps.get("authorization_url"),
         access_code=ps.get("access_code"),
-        metadata_json=payload.metadata,
+        # metadata_json=payload.metadata,
+        metadata_json=(
+            {**(payload.metadata or {}), "split_skipped": resolved.split_skipped_reason}
+            if resolved.split_skipped_reason else payload.metadata
+        ),
     )
     db.add(payment)
     return api_response(
@@ -116,8 +141,13 @@ def verify_payment(
 
     try:
         tx = provider_client.verify_transaction(reference)
-    except PaymentProviderError as exc:
-        raise CustomAPIException(f"Verification failed: {exc.message}", 402)
+    # except PaymentProviderError as exc:
+    #     raise CustomAPIException(f"Verification failed: {exc.message}", 402)
+    # v2
+    except (PaymentProviderError, PaystackError) as exc:
+        raise CustomAPIException(
+            f"Verification failed: {getattr(exc, 'message', None) or str(exc)}", 402
+        )
 
     if tx.get("status") != "success":
         payment.status = PaymentStatus.FAILED
@@ -260,13 +290,24 @@ async def paystack_webhook(
 ):
     body = await request.body()
 
+    # cfg = get_app_config().payments_config.paystack
+    # secret = cfg.webhook_secret or cfg.secret_key or ""
+    # if x_paystack_signature and secret:
+    #     expected = hmac.new(secret.encode(), body, hashlib.sha512).hexdigest()
+    #     if not hmac.compare_digest(expected, x_paystack_signature):
+    #         raise CustomAPIException("Invalid webhook signature.", 401, "INVALID_SIGNATURE")
+
+    # v2
     cfg = get_app_config().payments_config.paystack
     secret = cfg.webhook_secret or cfg.secret_key or ""
-    if x_paystack_signature and secret:
-        expected = hmac.new(secret.encode(), body, hashlib.sha512).hexdigest()
-        if not hmac.compare_digest(expected, x_paystack_signature):
-            raise CustomAPIException("Invalid webhook signature.", 401, "INVALID_SIGNATURE")
-
+    if not secret:
+        raise CustomAPIException("Webhook secret not configured.", 500, "WEBHOOK_NOT_CONFIGURED")
+    if not x_paystack_signature:
+        raise CustomAPIException("Missing webhook signature.", 401, "INVALID_SIGNATURE")
+    expected = hmac.new(secret.encode(), body, hashlib.sha512).hexdigest()
+    if not hmac.compare_digest(expected, x_paystack_signature):
+        raise CustomAPIException("Invalid webhook signature.", 401, "INVALID_SIGNATURE")
+    
     try:
         event_data = json.loads(body)
     except json.JSONDecodeError:

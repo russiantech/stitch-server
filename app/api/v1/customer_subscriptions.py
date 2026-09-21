@@ -9,14 +9,14 @@ Key business rules:
 """
 import logging
 from datetime import datetime, timezone
-from operator import or_
+# from operator import or_
+from sqlalchemy import desc, or_
 from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from app.services.payments import get_provider
 from app.api.deps.rbac import require_roles
-from sqlalchemy import desc
 from sqlalchemy.orm import Session, joinedload
 
 from app.api.deps.auth import get_current_user, require_admin, require_staff_or_admin
@@ -47,10 +47,11 @@ from app.services.payments.paystack import PaystackError, get_paystack
 
 from app.core.config.loader import get_app_config
 from app.services.payments.base import PaymentProviderError
-from app.services.payments.provider_resolver import _get_provider_for_org
+from app.services.payments.provider_resolver import _get_provider_for_org, initialize_with_recovery
 
 from app.utils.helpers import from_kobo, generate_reference, next_renewal_date
 from app.utils.responses import api_response
+
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Subscriptions & Plans"])
@@ -378,6 +379,101 @@ def all_subscriptions(
 
 # v2
 
+# @router.post("/payment/{plan_id}/paystack")
+# def initiate_subscription(
+#     plan_id: str,
+#     payload: SubscriptionInitiateRequest,
+#     background: BackgroundTasks,
+#     user: User = Depends(get_current_user),
+#     db: Session = Depends(get_db),
+# ):
+#     """
+#     Initiate subscription payment via the org's configured payment
+#     provider (default OPay, falls back to Paystack if unconfigured).
+#     - If plan_code exists AND provider is Paystack → recurring plan (auto-renews)
+#     - If user already has this plan → top-up (same endpoint)
+#     Returns: { authorization_url, reference, access_code } for the
+#     frontend to redirect/resume-inline.
+#     """
+#     plan = db.get(ServicePlan, plan_id)
+#     if not plan or not plan.is_active:
+#         raise NotFoundError("Plan", plan_id)
+
+#     email = payload.email or user.email
+#     ref = generate_reference("ST-SUB")
+
+#     existing_sub = db.query(CustomerSubscription).options(joinedload(CustomerSubscription.plan)).filter(
+#         CustomerSubscription.user_id == user.id,
+#         CustomerSubscription.plan_id == plan_id,
+#         CustomerSubscription.status.in_([SubscriptionStatus.ACTIVE, SubscriptionStatus.PAUSED]),
+#     ).first()
+#     is_topup = existing_sub is not None
+
+#     resolved = _get_provider_for_org(db, user.organization_id)
+
+#     payment = Payment(
+#         user_id=user.id,
+#         customer_subscription_id=existing_sub.id if existing_sub else None,
+#         reference=ref,
+#         provider=resolved.provider_name,
+#         purpose=PaymentPurpose.TOP_UP if is_topup else PaymentPurpose.SUBSCRIPTION,
+#         status=PaymentStatus.PENDING,
+#         amount=plan.amount,
+#         metadata_json={
+#             "plan_id": str(plan.id),
+#             "plan_name": plan.name,
+#             "is_topup": is_topup,
+#             "user_id": str(user.id),
+#             "provider": resolved.provider_name,
+#         },
+#     )
+#     db.add(payment); db.flush()
+
+#     callback_url = payload.callback_url or get_app_config().payments_config.paystack.callback_url
+
+#     try:
+#         init_kwargs = dict(
+#             email=email,
+#             amount=plan.amount,
+#             reference=ref,
+#             callback_url=callback_url,
+#             metadata={
+#                 "plan_id": str(plan.id), "plan_name": plan.name,
+#                 "is_topup": is_topup, "user_id": str(user.id),
+#                 "payment_id": str(payment.id),
+#             },
+#             subaccount_code=resolved.subaccount_code,
+#             key_fingerprint=resolved.key_fingerprint,
+#         )
+#         # Recurring plan codes are a Paystack-specific mechanism — only
+#         # pass plan_code when Paystack is actually the resolved provider.
+#         if resolved.provider_name == "paystack" and plan.paystack_plan_code:
+#             init_kwargs["plan_code"] = plan.paystack_plan_code
+
+#         ps_data = resolved.client.initialize_transaction(**init_kwargs)
+
+#         payment.paystack_id = ps_data.get("access_code")
+#         payment.access_code = ps_data.get("access_code")
+#         payment.authorization_url = ps_data.get("authorization_url")
+
+#         data = {
+#             "reference": ref,
+#             "authorization_url": ps_data.get("authorization_url"),
+#             "access_code": ps_data.get("access_code"),
+#             "is_topup": is_topup,
+#             "provider": resolved.provider_name,
+#             "plan": PlanOut.model_validate(plan),
+#         }
+#         logger.info(f"Initiated subscription payment: {data}")
+
+#         return api_response(success=True, message="Payment initiated.", data=data)
+#     except PaymentProviderError as exc:
+#         payment.status = PaymentStatus.FAILED
+#         raise CustomAPIException(f"Payment initiation failed: {exc.message}", 502, "PAYMENT_PROVIDER_ERROR")
+
+
+
+# v3
 @router.post("/payment/{plan_id}/paystack")
 def initiate_subscription(
     plan_id: str,
@@ -387,10 +483,13 @@ def initiate_subscription(
     db: Session = Depends(get_db),
 ):
     """
-    Initiate subscription payment via the org's configured payment
-    provider (default OPay, falls back to Paystack if unconfigured).
+    Initiate subscription payment via the org's preferred payment provider
+    (Organization.preferred_provider; Paystack if the user has no org or the
+    org has no preference).
     - If plan_code exists AND provider is Paystack → recurring plan (auto-renews)
     - If user already has this plan → top-up (same endpoint)
+    - The tenant payout split (subaccount) is resolved and self-healed inside
+      initialize_with_recovery, including after the payment keys are switched.
     Returns: { authorization_url, reference, access_code } for the
     frontend to redirect/resume-inline.
     """
@@ -431,6 +530,8 @@ def initiate_subscription(
     callback_url = payload.callback_url or get_app_config().payments_config.paystack.callback_url
 
     try:
+        # NOTE: no subaccount_code here. initialize_with_recovery reads it from
+        # `resolved`; passing it as well would raise a duplicate-keyword TypeError.
         init_kwargs = dict(
             email=email,
             amount=plan.amount,
@@ -441,18 +542,40 @@ def initiate_subscription(
                 "is_topup": is_topup, "user_id": str(user.id),
                 "payment_id": str(payment.id),
             },
-            subaccount_code=resolved.subaccount_code,
         )
         # Recurring plan codes are a Paystack-specific mechanism — only
         # pass plan_code when Paystack is actually the resolved provider.
         if resolved.provider_name == "paystack" and plan.paystack_plan_code:
             init_kwargs["plan_code"] = plan.paystack_plan_code
 
-        ps_data = resolved.client.initialize_transaction(**init_kwargs)
+        recurring_skipped: Optional[str] = None
+        try:
+            ps_data = initialize_with_recovery(db, resolved, **init_kwargs)
+        except PaymentProviderError as exc:
+            # Plan codes belong to one Paystack account/mode, just like subaccounts.
+            # If Paystack rejects the stored plan, take a one-time payment instead of
+            # failing checkout. Auto-renewal is skipped and flagged for follow-up.
+            if "plan_code" not in init_kwargs or "plan" not in exc.message.lower():
+                raise
+            logger.error("Paystack rejected plan %s (%s): %s", plan.id, plan.paystack_plan_code, exc.message)
+            init_kwargs.pop("plan_code")
+            recurring_skipped = "plan_rejected"
+            init_kwargs["metadata"] = {**init_kwargs["metadata"], "recurring_skipped": recurring_skipped}
+            ps_data = initialize_with_recovery(db, resolved, **init_kwargs)
 
         payment.paystack_id = ps_data.get("access_code")
         payment.access_code = ps_data.get("access_code")
         payment.authorization_url = ps_data.get("authorization_url")
+
+        # Record any degradation so it can be reconciled later. Reassign the dict
+        # (rather than mutating it) so SQLAlchemy sees the change.
+        flags = {}
+        if resolved.split_skipped_reason:
+            flags["split_skipped"] = resolved.split_skipped_reason
+        if recurring_skipped:
+            flags["recurring_skipped"] = recurring_skipped
+        if flags:
+            payment.metadata_json = {**(payment.metadata_json or {}), **flags}
 
         data = {
             "reference": ref,
@@ -468,6 +591,10 @@ def initiate_subscription(
     except PaymentProviderError as exc:
         payment.status = PaymentStatus.FAILED
         raise CustomAPIException(f"Payment initiation failed: {exc.message}", 502, "PAYMENT_PROVIDER_ERROR")
+    except CustomAPIException:
+        # e.g. 409 PAYOUT_ACCOUNT_INVALID from initialize_with_recovery
+        payment.status = PaymentStatus.FAILED
+        raise
 
 
 @router.get("/payment/callback/paystack")

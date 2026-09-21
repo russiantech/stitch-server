@@ -14,18 +14,20 @@ import httpx
 
 from app.core.config import get_app_config
 from app.utils.helpers import to_kobo
-from app.services.payments.base import PaymentProviderBase
+from app.services.payments.base import PaymentProviderBase, PaymentProviderError
 
 logger = logging.getLogger(__name__)
 
+# class PaystackError(Exception):
+#     def __init__(self, message: str, status_code: int = 400, raw: Optional[dict] = None):
+#         super().__init__(message)
+#         self.message = message
+#         self.status_code = status_code
+#         self.raw = raw or {}
 
-class PaystackError(Exception):
-    def __init__(self, message: str, status_code: int = 400, raw: Optional[dict] = None):
-        super().__init__(message)
-        self.message = message
-        self.status_code = status_code
-        self.raw = raw or {}
-
+class PaystackError(PaymentProviderError):
+    """Own name kept so existing `except PaystackError` sites still work;
+    subclassing means `except PaymentProviderError` now catches it too."""
 
 # class PaystackService:
 class PaystackService(PaymentProviderBase):
@@ -36,7 +38,7 @@ class PaystackService(PaymentProviderBase):
     def __init__(self):
         cfg = get_app_config().payments_config.paystack
         self._secret = cfg.secret_key or ""
-        self._callback_url = cfg.callback_url or "http://localhost:5173/subscriptions?verify=1"
+        self._callback_url = cfg.callback_url or "https://stitch.salesnet.ng/subscriptions?verify=1"
 
     def _headers(self) -> Dict[str, str]:
         return {
@@ -86,6 +88,19 @@ class PaystackService(PaymentProviderBase):
             raise PaystackError(data.get("message", "Paystack error"), r.status_code, data)
         return data
 
+    def find_subaccount(self, account_number: str, business_name: Optional[str] = None) -> Optional[dict]:
+        """Look for an existing subaccount on the CURRENT Paystack account."""
+        for page in range(1, 6):
+            items = self._get("/subaccount", {"page": page, "perPage": 100}).get("data") or []
+            for s in items:
+                if str(s.get("account_number")) != str(account_number):
+                    continue
+                if business_name is None or (s.get("business_name") or "").strip().lower() == business_name.strip().lower():
+                    return s
+            if len(items) < 100:
+                break
+        return None
+    
     # ── Transaction ───────────────────────────────────────────────────────────
 
     # def initialize_transaction(

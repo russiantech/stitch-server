@@ -14,6 +14,7 @@ from app.models.payments.providers import TenantProviderAccount
 from app.models.users import User
 from app.schemas.payouts import BankResolveRequest, PayoutSetupRequest
 from app.services.payments import get_provider, PaymentProviderError
+from app.services.payments.provider_resolver import key_fingerprint
 from app.utils.responses import api_response
 
 logger = logging.getLogger(__name__)
@@ -88,17 +89,35 @@ def setup_payout(
         TenantProviderAccount.provider == payload.provider,
     ).first()
 
+    # if existing:
+    #     existing.subaccount_code = sub.get("subaccount_code", "")
+    #     existing.key_fingerprint = sub.get("key_fingerprint")
+    #     existing.verified_at = datetime.now(timezone.utc)
+    #     existing.is_active = True
+    # else:
+    #     db.add(TenantProviderAccount(
+    #         organization_id=org.id,
+    #         provider=payload.provider,
+    #         subaccount_code=sub.get("subaccount_code", ""),
+    #         verified_at=datetime.now(timezone.utc),
+    #     ))
+    
+    # v2
+    fp = key_fingerprint(payload.provider)  # "unconfigured" for non-Paystack providers
     if existing:
         existing.subaccount_code = sub.get("subaccount_code", "")
         existing.verified_at = datetime.now(timezone.utc)
         existing.is_active = True
+        existing.key_fingerprint = fp
     else:
-        db.add(TenantProviderAccount(
+        acct = TenantProviderAccount(
             organization_id=org.id,
             provider=payload.provider,
             subaccount_code=sub.get("subaccount_code", ""),
             verified_at=datetime.now(timezone.utc),
-        ))
+            key_fingerprint = fp
+        )
+        db.add(acct)
 
     org.preferred_provider = payload.provider
     org.payout_bank_code = payload.bank_code
